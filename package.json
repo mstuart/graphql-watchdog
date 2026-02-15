@@ -40,6 +40,10 @@
   ],
   "author": "Mark Stuart",
   "license": "MIT",
+  "homepage": "https://github.com/mstuart/graphql-watchdog#readme",
+  "bugs": {
+    "url": "https://github.com/mstuart/graphql-watchdog/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/mstuart/graphql-watchdog.git"
@@ -49,16 +53,18 @@
   },
   "peerDependencies": {
     "graphql": "^16.12.0",
-    "ioredis": ">=5.0.0"
+    "ioredis": ">=5.0.0",
+    "graphql-yoga": "^5.0.0",
+    "@apollo/server": "^4.0.0"
   },
   "peerDependenciesMeta": {
-    "@graphql-yoga/node": {
+    "ioredis": {
+      "optional": true
+    },
+    "graphql-yoga": {
       "optional": true
     },
     "@apollo/server": {
-      "optional": true
-    },
-    "ioredis": {
       "optional": true
     }
   },
@@ -70,6 +76,7 @@
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
     "eslint": "^9.39.2",
+    "graphql": "^16.12.0",
     "prettier": "^3.8.1",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
