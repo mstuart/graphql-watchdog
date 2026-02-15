@@ -2,7 +2,6 @@ import {
   type DocumentNode,
   type GraphQLSchema,
   visit,
-  Kind,
   TypeInfo,
   visitWithTypeInfo,
   isObjectType,

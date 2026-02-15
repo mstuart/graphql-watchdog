@@ -2,15 +2,12 @@ import {
   type DocumentNode,
   type GraphQLSchema,
   type GraphQLOutputType,
-  type GraphQLField,
   visit,
   Kind,
   TypeInfo,
   visitWithTypeInfo,
   isListType,
   isNonNullType,
-  isObjectType,
-  isAbstractType,
 } from 'graphql';
 import type { CostConfig } from '../types/index.js';
 
