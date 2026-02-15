@@ -31,7 +31,7 @@ export class DynamicCostTracker {
       const newAvg = existing.avgDuration + (durationMs - existing.avgDuration) / newCount;
 
       // Update p95 samples (bounded ring buffer approach)
-      let samples = this.durationSamples.get(key) ?? [];
+      const samples = this.durationSamples.get(key) ?? [];
       if (samples.length >= this.maxSamples) {
         // Remove oldest sample
         samples.shift();

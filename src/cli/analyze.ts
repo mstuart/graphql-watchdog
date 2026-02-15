@@ -1,6 +1,6 @@
 import { Command } from 'commander';
-import { readFileSync } from 'node:fs';
-import { globSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildSchema, parse } from 'graphql';
 import { analyzeCost } from '../cost/analyzer.js';
 import { formatCostBreakdown } from '../reporter/terminal.js';
@@ -20,8 +20,6 @@ export function createAnalyzeCommand(): Command {
         const schemaSource = readFileSync(options.schema, 'utf-8');
         const schema = buildSchema(schemaSource);
 
-        // Use glob to find operation files
-        const { glob } = await import('node:fs');
         const files = findFiles(options.operations);
 
         if (files.length === 0) {
@@ -62,10 +60,6 @@ export function createAnalyzeCommand(): Command {
 }
 
 function findFiles(pattern: string): string[] {
-  // Simple glob implementation using node:fs
-  const { readdirSync, statSync } = require('node:fs');
-  const { resolve, join } = require('node:path');
-
   if (pattern.includes('*')) {
     // Convert glob to regex
     const regexStr = pattern
