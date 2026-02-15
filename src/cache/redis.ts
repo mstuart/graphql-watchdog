@@ -25,7 +25,9 @@ export class RedisCacheBackend implements CacheBackend {
 
     let Redis: any;
     try {
-      const ioredis = await import('ioredis');
+      // Use variable to prevent TypeScript from resolving the module at build time
+      const moduleName = 'ioredis';
+      const ioredis = await (Function('m', 'return import(m)') as (m: string) => Promise<any>)(moduleName);
       Redis = ioredis.default ?? ioredis;
     } catch {
       throw new Error(
