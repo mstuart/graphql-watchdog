@@ -50,6 +50,14 @@
   "peerDependencies": {
     "graphql": "^16.12.0"
   },
+  "peerDependenciesMeta": {
+    "@graphql-yoga/node": {
+      "optional": true
+    },
+    "@apollo/server": {
+      "optional": true
+    }
+  },
   "dependencies": {
     "commander": "^14.0.3"
   },
