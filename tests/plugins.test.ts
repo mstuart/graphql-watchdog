@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useWatchdog } from '../src/plugins/yoga.js';
 import { watchdogApolloPlugin } from '../src/plugins/apollo.js';
-import { buildSchema, parse } from 'graphql';
+import { buildSchema, parse, execute, GraphQLSchema, GraphQLObjectType, GraphQLString, GraphQLList, GraphQLNonNull, GraphQLID } from 'graphql';
+import type { N1Detection } from '../src/types/index.js';
 
 const schema = buildSchema(`
   type Query {
@@ -21,49 +22,127 @@ const schema = buildSchema(`
   }
 `);
 
+// Schema with real resolvers for N+1 testing
+function createSchemaWithResolvers(): GraphQLSchema {
+  const users = [
+    { id: '1', name: 'Alice' },
+    { id: '2', name: 'Bob' },
+    { id: '3', name: 'Charlie' },
+  ];
+  const posts = [
+    { id: 'p1', title: 'Post 1', authorId: '1' },
+    { id: 'p2', title: 'Post 2', authorId: '1' },
+    { id: 'p3', title: 'Post 3', authorId: '2' },
+    { id: 'p4', title: 'Post 4', authorId: '2' },
+    { id: 'p5', title: 'Post 5', authorId: '3' },
+  ];
+
+  const UserType = new GraphQLObjectType({
+    name: 'User',
+    fields: () => ({
+      id: { type: new GraphQLNonNull(GraphQLID) },
+      name: { type: new GraphQLNonNull(GraphQLString) },
+    }),
+  });
+
+  const PostType = new GraphQLObjectType({
+    name: 'Post',
+    fields: () => ({
+      id: { type: new GraphQLNonNull(GraphQLID) },
+      title: { type: new GraphQLNonNull(GraphQLString) },
+      author: {
+        type: new GraphQLNonNull(UserType),
+        resolve: (post: { authorId: string }) => users.find(u => u.id === post.authorId),
+      },
+    }),
+  });
+
+  const QueryType = new GraphQLObjectType({
+    name: 'Query',
+    fields: {
+      posts: {
+        type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(PostType))),
+        resolve: () => posts,
+      },
+    },
+  });
+
+  return new GraphQLSchema({ query: QueryType });
+}
+
 describe('Server Plugins', () => {
   describe('useWatchdog (Yoga)', () => {
-    it('should detect N+1 patterns via onExecute lifecycle', () => {
-      const plugin = useWatchdog({ enableDetector: true });
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    it('should detect N+1 patterns via schema resolver instrumentation', async () => {
+      const detections: N1Detection[] = [];
+      const testSchema = createSchemaWithResolvers();
+      const plugin = useWatchdog({
+        enableDetector: true,
+        onDetection: (d) => detections.push(...d),
+      });
 
-      const document = parse(`
-        query {
-          posts {
-            title
-            author {
-              name
-            }
-          }
+      const document = parse(`{
+        posts {
+          id
+          title
+          author { id name }
         }
-      `);
+      }`);
 
+      const contextValue: Record<string, unknown> = {};
+
+      // onExecute instruments schema and sets up context
       const { onExecuteDone } = plugin.onExecute({
         args: {
-          schema,
+          schema: testSchema,
           document,
+          contextValue,
           operationName: null,
           variableValues: null,
         },
       });
 
-      // Simulate the result of an execution with N+1 data
-      // The plugin itself wraps instrumenter; for unit test we test the lifecycle works
+      // Actually execute the query — resolvers will record calls to context
+      const result = await execute({
+        schema: testSchema,
+        document,
+        contextValue,
+      });
+
+      expect(result.errors).toBeUndefined();
+      expect(result.data?.posts).toHaveLength(5);
+
+      // onExecuteDone analyzes the recorded calls
       const executionResult = onExecuteDone({
-        result: {
-          data: {
-            posts: [
-              { id: '1', title: 'Post 1', author: { id: 'a1', name: 'Alice' } },
-            ],
-          },
-        },
+        result: { data: result.data as Record<string, unknown> },
       });
 
       expect(executionResult).toBeDefined();
       expect(executionResult.duration).toBeGreaterThanOrEqual(0);
-      expect(Array.isArray(executionResult.n1Detections)).toBe(true);
 
-      warnSpy.mockRestore();
+      // Should detect N+1 on Post.author (5 calls — one per post)
+      expect(detections.length).toBeGreaterThan(0);
+      expect(detections[0].field).toBe('Post.author');
+      expect(detections[0].callCount).toBe(5);
+    });
+
+    it('should not detect N+1 when detector is disabled', async () => {
+      const testSchema = createSchemaWithResolvers();
+      const plugin = useWatchdog({ enableDetector: false });
+
+      const document = parse(`{ posts { id title author { name } } }`);
+      const contextValue: Record<string, unknown> = {};
+
+      const { onExecuteDone } = plugin.onExecute({
+        args: { schema: testSchema, document, contextValue, operationName: null, variableValues: null },
+      });
+
+      await execute({ schema: testSchema, document, contextValue });
+
+      const executionResult = onExecuteDone({
+        result: { data: { posts: [] } },
+      });
+
+      expect(executionResult.n1Detections).toHaveLength(0);
     });
 
     it('should support cache when enabled', () => {
@@ -94,6 +173,7 @@ describe('Server Plugins', () => {
         args: {
           schema,
           document,
+          contextValue: {},
           operationName: 'GetUser',
           variableValues: { id: '1' },
         },
