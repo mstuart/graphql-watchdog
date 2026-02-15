@@ -1,4 +1,4 @@
-import type { PerformanceReport, N1Detection, CacheStats } from '../types/index.js';
+import type { PerformanceReport, CacheStats } from '../types/index.js';
 
 function escapeHtml(str: string): string {
   return str

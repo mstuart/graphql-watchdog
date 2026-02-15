@@ -1,7 +1,6 @@
 import type { WatchdogConfig, N1Detection } from '../types/index.js';
 import { ResolverInstrumenter } from '../detector/instrumenter.js';
 import { analyzeForN1 } from '../detector/analyzer.js';
-import { analyzeCost } from '../cost/analyzer.js';
 import { ResponseCache } from '../cache/store.js';
 import { normalizeResponse } from '../cache/normalizer.js';
 import { getMutationTypes } from '../cache/invalidator.js';
@@ -61,10 +60,8 @@ export function useWatchdog(config?: WatchdogConfig) {
       };
     },
 
-    onValidate({ addValidationRule }: { addValidationRule: (rule: unknown) => void }) {
+    onValidate({ addValidationRule: _addValidationRule }: { addValidationRule: (rule: unknown) => void }) {
       if (config?.enableCost !== false && config?.cost?.maxCost) {
-        // Import dynamically to avoid circular issues
-        const { costLimitRule } = require('../cost/rules.js');
         // Note: We'd need the schema here, which Yoga provides
         // This is a simplified version
       }
