@@ -56,4 +56,5 @@ export interface CacheConfig {
   maxSize?: number; // default 1000
   ttl?: number; // ms, default 60000
   invalidateOnMutation?: boolean; // default true
+  backend?: import('../cache/backend.js').CacheBackend;
 }
