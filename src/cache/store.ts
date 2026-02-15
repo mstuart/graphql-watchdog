@@ -1,5 +1,6 @@
 import type { CacheConfig, CacheStats } from '../types/index.js';
 import type { NormalizedEntity } from './normalizer.js';
+import type { CacheBackend } from './backend.js';
 
 interface CacheEntry {
   data: unknown;
@@ -14,13 +15,30 @@ export class ResponseCache {
   private maxSize: number;
   private ttl: number;
   private stats: CacheStats = { hits: 0, misses: 0, hitRate: 0, entries: 0 };
+  private backend: CacheBackend | null;
 
   constructor(config?: CacheConfig) {
     this.maxSize = config?.maxSize ?? 1000;
     this.ttl = config?.ttl ?? 60000;
+    this.backend = config?.backend ?? null;
   }
 
   set(cacheKey: string, data: unknown, entities: NormalizedEntity[]): void {
+    if (this.backend) {
+      // Use backend asynchronously, fire-and-forget for sync interface compat
+      const entry: CacheEntry = {
+        data,
+        entities,
+        expiry: Date.now() + this.ttl,
+        lastAccess: Date.now(),
+      };
+      this.backend.set(cacheKey, JSON.stringify(entry), this.ttl).catch(() => {});
+      // Still maintain type index in memory for invalidation
+      this.updateTypeIndex(cacheKey, entities);
+      this.updateEntryCount();
+      return;
+    }
+
     // Evict LRU if over maxSize
     if (this.cache.size >= this.maxSize && !this.cache.has(cacheKey)) {
       this.evictLRU();
@@ -34,21 +52,20 @@ export class ResponseCache {
     };
 
     this.cache.set(cacheKey, entry);
-
-    // Update type index
-    for (const entity of entities) {
-      let typeSet = this.typeIndex.get(entity.__typename);
-      if (!typeSet) {
-        typeSet = new Set();
-        this.typeIndex.set(entity.__typename, typeSet);
-      }
-      typeSet.add(cacheKey);
-    }
-
+    this.updateTypeIndex(cacheKey, entities);
     this.updateEntryCount();
   }
 
   get(cacheKey: string): unknown | null {
+    if (this.backend) {
+      // For sync compatibility, backend-based get is async-only
+      // Use getAsync for backend-based retrieval
+      // Fallback: return null for sync calls with a backend
+      this.stats.misses++;
+      this.updateHitRate();
+      return null;
+    }
+
     const entry = this.cache.get(cacheKey);
 
     if (!entry) {
@@ -71,12 +88,53 @@ export class ResponseCache {
     return entry.data;
   }
 
+  async getAsync(cacheKey: string): Promise<unknown | null> {
+    if (this.backend) {
+      const raw = await this.backend.get(cacheKey);
+      if (!raw) {
+        this.stats.misses++;
+        this.updateHitRate();
+        return null;
+      }
+
+      try {
+        const entry: CacheEntry = JSON.parse(raw);
+        if (Date.now() > entry.expiry) {
+          await this.backend.del(cacheKey);
+          this.stats.misses++;
+          this.updateHitRate();
+          return null;
+        }
+
+        entry.lastAccess = Date.now();
+        // Update in backend
+        await this.backend.set(cacheKey, JSON.stringify(entry), this.ttl);
+        this.stats.hits++;
+        this.updateHitRate();
+        return entry.data;
+      } catch {
+        this.stats.misses++;
+        this.updateHitRate();
+        return null;
+      }
+    }
+
+    // Delegate to sync get for in-memory
+    return this.get(cacheKey);
+  }
+
   invalidateByType(typename: string): number {
     const keys = this.typeIndex.get(typename);
     if (!keys) return 0;
 
     const count = keys.size;
     const keysToDelete = [...keys];
+
+    if (this.backend) {
+      // Async deletion, fire-and-forget
+      this.backend.delMany(keysToDelete).catch(() => {});
+    }
+
     for (const key of keysToDelete) {
       this.deleteEntry(key);
     }
@@ -104,6 +162,10 @@ export class ResponseCache {
       }
     }
 
+    if (this.backend && keysToDelete.length > 0) {
+      this.backend.delMany(keysToDelete).catch(() => {});
+    }
+
     for (const key of keysToDelete) {
       this.deleteEntry(key);
     }
@@ -116,9 +178,23 @@ export class ResponseCache {
   }
 
   clear(): void {
+    if (this.backend) {
+      this.backend.clear().catch(() => {});
+    }
     this.cache.clear();
     this.typeIndex.clear();
     this.stats = { hits: 0, misses: 0, hitRate: 0, entries: 0 };
+  }
+
+  private updateTypeIndex(cacheKey: string, entities: NormalizedEntity[]): void {
+    for (const entity of entities) {
+      let typeSet = this.typeIndex.get(entity.__typename);
+      if (!typeSet) {
+        typeSet = new Set();
+        this.typeIndex.set(entity.__typename, typeSet);
+      }
+      typeSet.add(cacheKey);
+    }
   }
 
   private deleteEntry(cacheKey: string): void {
