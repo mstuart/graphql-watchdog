@@ -28,9 +28,9 @@ export function createBenchmarkCommand(): Command {
     .requiredOption('--endpoint <url>', 'GraphQL endpoint URL')
     .requiredOption('--operations <glob>', 'Glob pattern for .graphql operation files')
     .option('--baseline <file>', 'Baseline JSON file for regression comparison')
-    .option('--iterations <n>', 'Number of iterations per operation', parseInt, '10')
+    .option('--iterations <n>', 'Number of iterations per operation', parseInt, 10)
     .option('--output <file>', 'Save results to JSON file')
-    .option('--threshold <percent>', 'Regression threshold percentage', parseInt, '20')
+    .option('--threshold <percent>', 'Regression threshold percentage', parseInt, 20)
     .action(async (options) => {
       try {
         const files = findOperationFiles(options.operations);
