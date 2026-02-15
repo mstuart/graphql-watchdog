@@ -50,6 +50,8 @@ export interface WatchdogConfig {
   enableCache?: boolean; // default false
   cost?: CostConfig;
   cache?: CacheConfig;
+  dynamicCost?: boolean;        // enable dynamic cost tracking
+  dynamicCostBaseline?: number; // ms per cost unit (default 10)
 }
 
 export interface CacheConfig {
