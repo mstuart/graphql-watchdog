@@ -1,7 +1,13 @@
 import type { ResolverCall } from '../types/index.js';
+import type { DynamicCostTracker } from '../cost/dynamic.js';
 
 export class ResolverInstrumenter {
   private calls: ResolverCall[] = [];
+  private costTracker: DynamicCostTracker | null = null;
+
+  constructor(options?: { costTracker?: DynamicCostTracker }) {
+    this.costTracker = options?.costTracker ?? null;
+  }
 
   instrumentResolvers(resolvers: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
     const instrumented: Record<string, Record<string, unknown>> = {};
@@ -38,6 +44,11 @@ export class ResolverInstrumenter {
                 batchKey,
               });
 
+              // Feed timing data to dynamic cost tracker
+              if (this.costTracker) {
+                this.costTracker.recordTiming(typeName, fieldName, duration);
+              }
+
               return result;
             } catch (error) {
               const duration = performance.now() - startTime;
@@ -50,6 +61,11 @@ export class ResolverInstrumenter {
                 duration,
                 batchKey,
               });
+
+              // Feed timing data even on errors
+              if (this.costTracker) {
+                this.costTracker.recordTiming(typeName, fieldName, duration);
+              }
 
               throw error;
             }
