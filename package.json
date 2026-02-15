@@ -48,13 +48,17 @@
     "node": ">=18.0.0"
   },
   "peerDependencies": {
-    "graphql": "^16.12.0"
+    "graphql": "^16.12.0",
+    "ioredis": ">=5.0.0"
   },
   "peerDependenciesMeta": {
     "@graphql-yoga/node": {
       "optional": true
     },
     "@apollo/server": {
+      "optional": true
+    },
+    "ioredis": {
       "optional": true
     }
   },
