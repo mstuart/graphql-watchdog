@@ -1,6 +1,6 @@
 {
   "name": "graphql-watchdog",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "GraphQL performance toolkit — N+1 detection, normalized caching, cost analysis, and CI regression testing",
   "type": "module",
   "main": "./dist/index.cjs",
