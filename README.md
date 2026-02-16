@@ -73,6 +73,17 @@ const server = new ApolloServer({
 });
 ```
 
+## Requirements
+
+- Node.js >= 18.0.0
+- `graphql` >= 16.0.0 (peer dependency)
+- `graphql-yoga` >= 5.0.0 (optional, for Yoga plugin)
+- `@apollo/server` >= 4.0.0 (optional, for Apollo plugin)
+- `ioredis` >= 5.0.0 (optional, for Redis cache backend)
+- TypeScript >= 5.0 (optional, for type definitions)
+
+Fully written in TypeScript with complete type exports for all public APIs.
+
 ## Usage
 
 ### N+1 Detection
@@ -390,6 +401,24 @@ Options:
 - `--iterations <n>` -- Iterations per operation (default: 10)
 - `--output <file>` -- Save results to JSON file
 - `--threshold <percent>` -- Regression threshold % (default: 20)
+
+## Comparison with Alternatives
+
+graphql-watchdog combines several capabilities that would otherwise require multiple packages:
+
+| Feature | graphql-watchdog | graphql-query-complexity | graphql-depth-limit | apollo-server-plugin-response-cache |
+|---------|-----------------|------------------------|--------------------|-------------------------------------|
+| Cost analysis | Yes | Yes | No | No |
+| N+1 detection | Yes | No | No | No |
+| Normalized response cache | Yes | No | No | Yes |
+| Dynamic cost tracking | Yes | No | No | No |
+| Optimization suggestions | Yes | No | No | No |
+| Pluggable cache backends (Redis, CF KV) | Yes | No | No | No |
+| CI benchmark regression testing | Yes | No | No | No |
+| Performance dashboard | Yes | No | No | No |
+| Yoga + Apollo plugins | Yes | Partial | Partial | Apollo only |
+
+Choose graphql-watchdog if you want a unified performance toolkit. Choose individual packages if you only need one specific capability.
 
 ## Configuration Reference
 
