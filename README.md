@@ -1,9 +1,16 @@
-# graphql-watchdog
+<div align="center">
+  <img src="docs/assets/logo.svg" alt="graphql-watchdog — GraphQL performance toolkit — N+1 detection, normalized caching, cost analysis, and CI regression testing" width="720">
+</div>
 
-[![CI](https://github.com/mstuart/graphql-watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/mstuart/graphql-watchdog/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/graphql-watchdog)](https://www.npmjs.com/package/graphql-watchdog)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center"><strong>GraphQL performance toolkit — N+1 detection, normalized caching, cost analysis, and CI regression testing</strong></p>
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://www.npmjs.com/package/graphql-watchdog"><img src="https://img.shields.io/npm/v/graphql-watchdog?label=npm" alt="npm"></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A518-339933.svg" alt="Node 18+">
+</p>
+
+---
 GraphQL performance toolkit -- N+1 detection, normalized caching, cost analysis, and CI regression testing.
 
 ## Features
