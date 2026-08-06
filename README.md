@@ -5,6 +5,7 @@
 <p align="center"><strong>GraphQL performance toolkit — N+1 detection, normalized caching, cost analysis, and CI regression testing</strong></p>
 
 <p align="center">
+  <a href="https://github.com/mstuart/graphql-watchdog/actions/workflows/ci.yml"><img src="https://github.com/mstuart/graphql-watchdog/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.npmjs.com/package/graphql-watchdog"><img src="https://img.shields.io/npm/v/graphql-watchdog?label=npm" alt="npm"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A518-339933.svg" alt="Node 18+">
