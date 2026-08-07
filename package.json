@@ -1,7 +1,7 @@
 {
   "name": "graphql-watchdog",
   "version": "1.0.0",
-  "description": "GraphQL performance toolkit — N+1 detection, normalized caching, cost analysis, and CI regression testing",
+  "description": "GraphQL performance toolkit \u2014 N+1 detection, normalized caching, cost analysis, and CI regression testing",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -96,5 +96,8 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.55.0",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
   }
 }
