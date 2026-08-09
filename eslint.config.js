@@ -1,18 +1,36 @@
-import tseslint from 'typescript-eslint';
+import typescriptEslint from '@typescript-eslint/eslint-plugin';
+import config from 'ultracite/eslint/core';
 
-export default tseslint.config(
+export default [
+  ...config,
   {
-    ignores: ['dist/', 'node_modules/', '**/*.js', '**/*.cjs', '**/*.mjs'],
+    ignores: ['**/*.js', '**/*.cjs', '**/*.mjs'],
   },
-  ...tseslint.configs.recommended,
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    languageOptions: {
+      parserOptions: {
+        project: false,
+      },
+    },
+    rules: {
+      ...typescriptEslint.configs['flat/disable-type-checked'].rules,
+    },
+  },
   {
     files: ['src/**/*.ts'],
     rules: {
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/no-unsafe-function-type': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
+      ],
     },
   },
-);
+];
