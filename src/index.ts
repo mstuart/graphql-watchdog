@@ -1,5 +1,4 @@
-// graphql-watchdog - GraphQL performance toolkit
-// N+1 detection, normalized caching, cost analysis, and CI regression testing
+// graphql-watchdog - GraphQL performance toolkit N+1 detection, normalized caching, cost analysis, and CI regression testing
 
 export { ResolverInstrumenter } from './detector/index.js';
 export { analyzeForN1 } from './detector/analyzer.js';

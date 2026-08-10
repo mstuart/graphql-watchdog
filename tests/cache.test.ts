@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { buildSchema, parse } from 'graphql';
 import { ResponseCache } from '../src/cache/store.js';
 import { normalizeResponse } from '../src/cache/normalizer.js';
 import { getMutationTypes } from '../src/cache/invalidator.js';
-import { buildSchema, parse } from 'graphql';
 import type { NormalizedEntity } from '../src/cache/normalizer.js';
+
+const makeEntities = (typename: string, id: string): NormalizedEntity[] => [
+  { __typename: typename, data: {}, id },
+];
 
 describe('Normalized Response Cache', () => {
   describe('normalizeResponse', () => {
@@ -23,8 +27,8 @@ describe('Normalized Response Cache', () => {
       const result = normalizeResponse(data, 'GetUser', { id: '1' });
 
       expect(result.entities).toHaveLength(3);
-      expect(result.entities.find((e) => e.__typename === 'User')?.id).toBe('1');
-      expect(result.entities.filter((e) => e.__typename === 'Post')).toHaveLength(2);
+      expect(result.entities.find((entity) => entity.__typename === 'User')?.id).toBe('1');
+      expect(result.entities.filter((entity) => entity.__typename === 'Post')).toHaveLength(2);
       expect(result.cacheKey).toBeTruthy();
     });
 
@@ -56,10 +60,6 @@ describe('Normalized Response Cache', () => {
     afterEach(() => {
       vi.useRealTimers();
     });
-
-    const makeEntities = (typename: string, id: string): NormalizedEntity[] => [
-      { __typename: typename, id, data: {} },
-    ];
 
     it('should store and retrieve cached response', () => {
       const data = { user: { name: 'Alice' } };
@@ -112,9 +112,9 @@ describe('Normalized Response Cache', () => {
 
     it('should evict LRU when cache is full', () => {
       // Fill cache to maxSize (5) with staggered timestamps
-      for (let i = 0; i < 5; i++) {
+      for (let index = 0; index < 5; index += 1) {
         vi.advanceTimersByTime(10);
-        cache.set(`key${i}`, { data: i }, makeEntities('Item', String(i)));
+        cache.set(`key${index}`, { data: index }, makeEntities('Item', String(index)));
       }
 
       // Access key0 to make it the most recently used
@@ -142,9 +142,12 @@ describe('Normalized Response Cache', () => {
     it('should track stats accurately', () => {
       cache.set('key1', { data: 1 }, makeEntities('User', '1'));
 
-      cache.get('key1'); // hit
-      cache.get('key1'); // hit
-      cache.get('missing'); // miss
+      // hit
+      cache.get('key1');
+      // hit
+      cache.get('key1');
+      // miss
+      cache.get('missing');
 
       const stats = cache.getStats();
       expect(stats.hits).toBe(2);
@@ -199,7 +202,7 @@ describe('Normalized Response Cache', () => {
     `);
 
     it('should detect return types from mutations', () => {
-      const doc = parse(`
+      const document = parse(`
         mutation {
           createUser(name: "Alice") {
             id
@@ -208,12 +211,12 @@ describe('Normalized Response Cache', () => {
         }
       `);
 
-      const types = getMutationTypes(doc, schema);
+      const types = getMutationTypes(document, schema);
       expect(types).toContain('User');
     });
 
     it('should detect multiple return types', () => {
-      const doc = parse(`
+      const document = parse(`
         mutation {
           createUser(name: "Alice") {
             id
@@ -224,13 +227,13 @@ describe('Normalized Response Cache', () => {
         }
       `);
 
-      const types = getMutationTypes(doc, schema);
+      const types = getMutationTypes(document, schema);
       expect(types).toContain('User');
       expect(types).toContain('Post');
     });
 
     it('should return empty for queries (non-mutations)', () => {
-      const doc = parse(`
+      const document = parse(`
         query {
           user(id: "1") {
             id
@@ -239,7 +242,7 @@ describe('Normalized Response Cache', () => {
         }
       `);
 
-      const types = getMutationTypes(doc, schema);
+      const types = getMutationTypes(document, schema);
       expect(types).toHaveLength(0);
     });
   });

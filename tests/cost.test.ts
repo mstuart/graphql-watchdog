@@ -3,6 +3,7 @@ import { buildSchema, parse, validate } from 'graphql';
 import { analyzeCost } from '../src/cost/analyzer.js';
 import { costLimitRule } from '../src/cost/rules.js';
 import type { CostConfig } from '../src/types/index.js';
+import type { ValidationRule } from 'graphql';
 
 const schema = buildSchema(`
   type Query {
@@ -196,7 +197,7 @@ describe('Query Cost Analyzer', () => {
 
       const config: CostConfig = { maxCost: 100 };
       const rule = costLimitRule(schema, config);
-      const errors = validate(schema, query, [rule as any]);
+      const errors = validate(schema, query, [rule as ValidationRule]);
 
       expect(errors.length).toBeGreaterThan(0);
       expect(errors[0].message).toContain('exceeds maximum allowed cost');
@@ -213,7 +214,7 @@ describe('Query Cost Analyzer', () => {
 
       const config: CostConfig = { maxCost: 100 };
       const rule = costLimitRule(schema, config);
-      const errors = validate(schema, query, [rule as any]);
+      const errors = validate(schema, query, [rule as ValidationRule]);
 
       expect(errors).toHaveLength(0);
     });
