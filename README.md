@@ -14,6 +14,7 @@
 </p>
 
 ---
+
 GraphQL performance toolkit -- N+1 detection, normalized caching, cost analysis, and CI regression testing.
 
 ## Features
@@ -42,7 +43,7 @@ import { createYoga, createSchema } from 'graphql-yoga';
 import { useWatchdog } from 'graphql-watchdog';
 
 const yoga = createYoga({
-  schema: createSchema({ /* your schema */ }),
+  schema: createSchema({/* your schema */}),
   plugins: [
     useWatchdog({
       enableDetector: true,
@@ -139,8 +140,8 @@ const breakdown = analyzeCost(query, schema, {
   },
 });
 
-console.log(breakdown.totalCost);  // calculated cost
-console.log(breakdown.exceeds);     // true if over maxCost
+console.log(breakdown.totalCost); // calculated cost
+console.log(breakdown.exceeds); // true if over maxCost
 
 // Or use as a validation rule
 const errors = validate(schema, query, [costLimitRule(schema, { maxCost: 500 })]);
@@ -180,6 +181,7 @@ for (const suggestion of suggestions) {
 ```
 
 Suggestion types:
+
 - **pagination** -- Unbounded list fields missing `first`/`limit` arguments
 - **field-pruning** -- Deeply nested fields contributing disproportionate cost
 - **depth-reduction** -- Queries exceeding 5 levels of nesting
@@ -319,12 +321,24 @@ Implement the `CacheBackend` interface to create your own:
 import type { CacheBackend } from 'graphql-watchdog';
 
 class MyCustomBackend implements CacheBackend {
-  async get(key: string): Promise<string | null> { /* ... */ }
-  async set(key: string, value: string, ttlMs?: number): Promise<void> { /* ... */ }
-  async del(key: string): Promise<void> { /* ... */ }
-  async keys(pattern: string): Promise<string[]> { /* ... */ }
-  async delMany(keys: string[]): Promise<number> { /* ... */ }
-  async clear(): Promise<void> { /* ... */ }
+  async get(key: string): Promise<string | null> {
+    /* ... */
+  }
+  async set(key: string, value: string, ttlMs?: number): Promise<void> {
+    /* ... */
+  }
+  async del(key: string): Promise<void> {
+    /* ... */
+  }
+  async keys(pattern: string): Promise<string[]> {
+    /* ... */
+  }
+  async delMany(keys: string[]): Promise<number> {
+    /* ... */
+  }
+  async clear(): Promise<void> {
+    /* ... */
+  }
 }
 ```
 
@@ -347,6 +361,7 @@ writeFileSync('dashboard.html', html);
 ```
 
 The dashboard includes:
+
 - **Performance score** (0-100) based on N+1 count, cost, and cache hit rate
 - **N+1 hotspots table** with field, call count, severity, and DataLoader suggestions
 - **Cost breakdown chart** (inline SVG bar chart)
@@ -362,9 +377,9 @@ Generate performance reports in terminal, JSON, or dashboard format:
 ```typescript
 import { generateReport } from 'graphql-watchdog';
 
-const report = generateReport(performanceReport, 'terminal');   // colored terminal output
-const json = generateReport(performanceReport, 'json');          // machine-readable JSON
-const html = generateReport(performanceReport, 'dashboard');     // self-contained HTML dashboard
+const report = generateReport(performanceReport, 'terminal'); // colored terminal output
+const json = generateReport(performanceReport, 'json'); // machine-readable JSON
+const html = generateReport(performanceReport, 'dashboard'); // self-contained HTML dashboard
 ```
 
 ## CLI
@@ -378,6 +393,7 @@ graphql-watchdog analyze --schema schema.graphql --operations "queries/**/*.grap
 ```
 
 Options:
+
 - `--schema <path>` -- Path to GraphQL schema SDL file (required)
 - `--operations <glob>` -- Glob pattern for .graphql operation files (required)
 - `--max-cost <number>` -- Maximum allowed query cost
@@ -405,6 +421,7 @@ graphql-watchdog benchmark \
 ```
 
 Options:
+
 - `--endpoint <url>` -- GraphQL endpoint URL (required)
 - `--operations <glob>` -- Glob pattern for .graphql files (required)
 - `--baseline <file>` -- Baseline JSON for regression comparison
@@ -417,7 +434,7 @@ Options:
 graphql-watchdog combines several capabilities that would otherwise require multiple packages:
 
 | Feature | graphql-watchdog | graphql-query-complexity | graphql-depth-limit | apollo-server-plugin-response-cache |
-|---------|-----------------|------------------------|--------------------|-------------------------------------|
+| --- | --- | --- | --- | --- |
 | Cost analysis | Yes | Yes | No | No |
 | N+1 detection | Yes | No | No | No |
 | Normalized response cache | Yes | No | No | Yes |
@@ -435,7 +452,7 @@ Choose graphql-watchdog if you want a unified performance toolkit. Choose indivi
 ### WatchdogConfig
 
 | Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `enableDetector` | `boolean` | `true` | Enable N+1 detection |
 | `enableCost` | `boolean` | `true` | Enable cost analysis |
 | `enableCache` | `boolean` | `false` | Enable response caching |
@@ -447,7 +464,7 @@ Choose graphql-watchdog if you want a unified performance toolkit. Choose indivi
 ### CostConfig
 
 | Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `defaultFieldCost` | `number` | `1` | Default cost per field |
 | `defaultListMultiplier` | `number` | `10` | Default multiplier for list fields |
 | `costMap` | `Record<string, number>` | `{}` | Custom costs by `TypeName.fieldName` |
@@ -456,7 +473,7 @@ Choose graphql-watchdog if you want a unified performance toolkit. Choose indivi
 ### CacheConfig
 
 | Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `maxSize` | `number` | `1000` | Maximum cache entries |
 | `ttl` | `number` | `60000` | Time-to-live in milliseconds |
 | `invalidateOnMutation` | `boolean` | `true` | Auto-invalidate on mutations |

@@ -1,11 +1,13 @@
-#!/usr/bin/env node
 import { Command } from 'commander';
 import { createAnalyzeCommand } from './cli/analyze.js';
 import { createBenchmarkCommand } from './cli/benchmark.js';
 
-const program = new Command()
+const program = new Command();
+program
   .name('graphql-watchdog')
-  .description('GraphQL performance toolkit — N+1 detection, cost analysis, caching, and CI benchmarking')
+  .description(
+    'GraphQL performance toolkit — N+1 detection, cost analysis, caching, and CI benchmarking',
+  )
   .version(process.env.PACKAGE_VERSION || '0.1.0');
 
 program.addCommand(createAnalyzeCommand());

@@ -4,7 +4,7 @@ import config from 'ultracite/eslint/core';
 export default [
   ...config,
   {
-    ignores: ['**/*.js', '**/*.cjs', '**/*.mjs'],
+    ignores: ['**/*.js', '**/*.cjs', '**/*.mjs', 'package.json', 'tsconfig.json'],
   },
   {
     files: ['**/*.ts', '**/*.tsx'],

@@ -39,6 +39,7 @@ npm run lint     # Run ESLint
 ## Reporting Bugs
 
 Please open an issue with:
+
 - Steps to reproduce
 - Expected behavior
 - Actual behavior

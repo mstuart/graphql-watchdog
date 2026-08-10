@@ -3,27 +3,29 @@ import { analyzeForN1 } from '../src/detector/analyzer.js';
 import { ResolverInstrumenter } from '../src/detector/instrumenter.js';
 import type { ResolverCall } from '../src/types/index.js';
 
+type InstrumentedResolver = (...parameters: unknown[]) => Promise<unknown>;
+
 describe('N+1 Detector', () => {
   describe('analyzeForN1', () => {
     it('should detect N+1 pattern with Post.author called 10 times', () => {
       const calls: ResolverCall[] = [
         // The "1" call: Query.posts returns a list
         {
+          batchKey: 'Query.posts',
+          duration: 50,
           fieldName: 'posts',
-          typeName: 'Query',
           parentId: null,
           timestamp: 1000,
-          duration: 50,
-          batchKey: 'Query.posts',
+          typeName: 'Query',
         },
         // The "N" calls: Post.author called for each post
-        ...Array.from({ length: 10 }, (_, i) => ({
-          fieldName: 'author',
-          typeName: 'Post',
-          parentId: `post-${i}`,
-          timestamp: 1100 + i,
-          duration: 5,
+        ...Array.from({ length: 10 }, (_, index) => ({
           batchKey: 'Post.author',
+          duration: 5,
+          fieldName: 'author',
+          parentId: `post-${index}`,
+          timestamp: 1100 + index,
+          typeName: 'Post',
         })),
       ];
 
@@ -41,20 +43,20 @@ describe('N+1 Detector', () => {
     it('should detect warning severity for calls between threshold and 10', () => {
       const calls: ResolverCall[] = [
         {
+          batchKey: 'Query.posts',
+          duration: 50,
           fieldName: 'posts',
-          typeName: 'Query',
           parentId: null,
           timestamp: 1000,
-          duration: 50,
-          batchKey: 'Query.posts',
+          typeName: 'Query',
         },
-        ...Array.from({ length: 5 }, (_, i) => ({
-          fieldName: 'author',
-          typeName: 'Post',
-          parentId: `post-${i}`,
-          timestamp: 1100 + i,
-          duration: 5,
+        ...Array.from({ length: 5 }, (_, index) => ({
           batchKey: 'Post.author',
+          duration: 5,
+          fieldName: 'author',
+          parentId: `post-${index}`,
+          timestamp: 1100 + index,
+          typeName: 'Post',
         })),
       ];
 
@@ -68,28 +70,28 @@ describe('N+1 Detector', () => {
     it('should return empty results for normal queries (no N+1)', () => {
       const calls: ResolverCall[] = [
         {
+          batchKey: 'Query.user',
+          duration: 50,
           fieldName: 'user',
-          typeName: 'Query',
           parentId: null,
           timestamp: 1000,
-          duration: 50,
-          batchKey: 'Query.user',
+          typeName: 'Query',
         },
         {
+          batchKey: 'User.name',
+          duration: 2,
           fieldName: 'name',
-          typeName: 'User',
           parentId: 'user-1',
           timestamp: 1100,
-          duration: 2,
-          batchKey: 'User.name',
+          typeName: 'User',
         },
         {
+          batchKey: 'User.email',
+          duration: 2,
           fieldName: 'email',
-          typeName: 'User',
           parentId: 'user-1',
           timestamp: 1102,
-          duration: 2,
-          batchKey: 'User.email',
+          typeName: 'User',
         },
       ];
 
@@ -98,13 +100,13 @@ describe('N+1 Detector', () => {
     });
 
     it('should respect custom threshold', () => {
-      const calls: ResolverCall[] = Array.from({ length: 5 }, (_, i) => ({
-        fieldName: 'author',
-        typeName: 'Post',
-        parentId: `post-${i}`,
-        timestamp: 1100 + i,
-        duration: 5,
+      const calls: ResolverCall[] = Array.from({ length: 5 }, (_, index) => ({
         batchKey: 'Post.author',
+        duration: 5,
+        fieldName: 'author',
+        parentId: `post-${index}`,
+        timestamp: 1100 + index,
+        typeName: 'Post',
       }));
 
       // With threshold 10, should not detect
@@ -119,21 +121,21 @@ describe('N+1 Detector', () => {
 
     it('should sort detections by callCount descending', () => {
       const calls: ResolverCall[] = [
-        ...Array.from({ length: 5 }, (_, i) => ({
-          fieldName: 'author',
-          typeName: 'Post',
-          parentId: `post-${i}`,
-          timestamp: 1100 + i,
-          duration: 5,
+        ...Array.from({ length: 5 }, (_, index) => ({
           batchKey: 'Post.author',
-        })),
-        ...Array.from({ length: 15 }, (_, i) => ({
-          fieldName: 'comments',
+          duration: 5,
+          fieldName: 'author',
+          parentId: `post-${index}`,
+          timestamp: 1100 + index,
           typeName: 'Post',
-          parentId: `post-${i}`,
-          timestamp: 1200 + i,
-          duration: 8,
+        })),
+        ...Array.from({ length: 15 }, (_, index) => ({
           batchKey: 'Post.comments',
+          duration: 8,
+          fieldName: 'comments',
+          parentId: `post-${index}`,
+          timestamp: 1200 + index,
+          typeName: 'Post',
         })),
       ];
 
@@ -152,11 +154,11 @@ describe('N+1 Detector', () => {
       const instrumenter = new ResolverInstrumenter();
 
       const resolvers = {
+        Post: {
+          author: async () => ({ id: 'a1', name: 'Author' }),
+        },
         Query: {
           posts: async () => [{ id: '1', title: 'Test' }],
-        },
-        Post: {
-          author: async (parent: { id: string }) => ({ id: 'a1', name: 'Author' }),
         },
       };
 
@@ -164,8 +166,8 @@ describe('N+1 Detector', () => {
 
       // Execute the instrumented resolvers
       await instrumented.Query.posts(null, {}, {}, {});
-      await (instrumented.Post.author as Function)({ id: '1' }, {}, {}, {});
-      await (instrumented.Post.author as Function)({ id: '2' }, {}, {}, {});
+      await (instrumented.Post.author as InstrumentedResolver)({ id: '1' }, {}, {}, {});
+      await (instrumented.Post.author as InstrumentedResolver)({ id: '2' }, {}, {}, {});
 
       const calls = instrumenter.getCalls();
       expect(calls).toHaveLength(3);
@@ -199,7 +201,7 @@ describe('N+1 Detector', () => {
         },
       };
 
-      const instrumented = instrumenter.instrumentResolvers(resolvers as any);
+      const instrumented = instrumenter.instrumentResolvers(resolvers);
       expect(instrumented.Post.__resolveType).toBe('BlogPost');
     });
 
@@ -215,9 +217,9 @@ describe('N+1 Detector', () => {
 
       const instrumented = instrumenter.instrumentResolvers(resolvers);
 
-      await expect((instrumented.Query.failing as Function)(null, {}, {}, {})).rejects.toThrow(
-        'DB connection failed',
-      );
+      await expect(
+        (instrumented.Query.failing as InstrumentedResolver)(null, {}, {}, {}),
+      ).rejects.toThrow('DB connection failed');
 
       expect(instrumenter.getCalls()).toHaveLength(1);
       expect(instrumenter.getCalls()[0].batchKey).toBe('Query.failing');

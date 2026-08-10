@@ -1,20 +1,21 @@
 import type { CostConfig } from '../types/index.js';
 
 export interface ResolverTimingEntry {
-  avgDuration: number;   // ms
-  p95Duration: number;   // ms
+  // ms
+  avgDuration: number;
+  // ms
+  p95Duration: number;
   callCount: number;
-  lastUpdated: number;   // timestamp
+  // timestamp
+  lastUpdated: number;
 }
 
-export interface ResolverTimingData {
-  [fieldPath: string]: ResolverTimingEntry;
-}
+export type ResolverTimingData = Record<string, ResolverTimingEntry>;
 
 export class DynamicCostTracker {
   private timingData: ResolverTimingData = {};
   // Track sorted durations for p95 calculation (bounded)
-  private durationSamples: Map<string, number[]> = new Map();
+  private durationSamples = new Map<string, number[]>();
   private maxSamples = 1000;
 
   /**
@@ -31,29 +32,29 @@ export class DynamicCostTracker {
       const newAvg = existing.avgDuration + (durationMs - existing.avgDuration) / newCount;
 
       // Update p95 samples (bounded ring buffer approach)
-      const samples = this.durationSamples.get(key) ?? [];
+      let samples = this.durationSamples.get(key) ?? [];
       if (samples.length >= this.maxSamples) {
-        // Remove oldest sample
-        samples.shift();
+        samples = samples.slice(1);
       }
       samples.push(durationMs);
       this.durationSamples.set(key, samples);
 
+      // eslint-disable-next-line unicorn/no-array-sort -- The project targets the ES2022 TypeScript library.
       const sorted = [...samples].sort((a, b) => a - b);
       const p95Index = Math.ceil(sorted.length * 0.95) - 1;
 
       this.timingData[key] = {
         avgDuration: newAvg,
-        p95Duration: sorted[Math.max(0, p95Index)],
         callCount: newCount,
         lastUpdated: Date.now(),
+        p95Duration: sorted[Math.max(0, p95Index)],
       };
     } else {
       this.timingData[key] = {
         avgDuration: durationMs,
-        p95Duration: durationMs,
         callCount: 1,
         lastUpdated: Date.now(),
+        p95Duration: durationMs,
       };
       this.durationSamples.set(key, [durationMs]);
     }
@@ -65,8 +66,10 @@ export class DynamicCostTracker {
    * Fields taking baselineDuration ms = cost 1, linear scaling.
    */
   toCostConfig(options?: {
-    baselineDuration?: number;  // ms -- cost=1 equivalent (default 10ms)
-    roundTo?: number;           // round costs to nearest N (default 1)
+    // ms -- cost=1 equivalent (default 10ms)
+    baselineDuration?: number;
+    // round costs to nearest N (default 1)
+    roundTo?: number;
   }): CostConfig {
     const baseline = options?.baselineDuration ?? 10;
     const roundTo = options?.roundTo ?? 1;
@@ -87,7 +90,7 @@ export class DynamicCostTracker {
 
   /** Export timing data for persistence */
   export(): ResolverTimingData {
-    return JSON.parse(JSON.stringify(this.timingData));
+    return structuredClone(this.timingData);
   }
 
   /** Import previously saved timing data */
@@ -106,19 +109,20 @@ export class DynamicCostTracker {
   getStats(): {
     trackedFields: number;
     totalCalls: number;
-    slowestFields: Array<{ field: string; avgDuration: number }>;
+    slowestFields: { field: string; avgDuration: number }[];
   } {
     const entries = Object.entries(this.timingData);
-    const totalCalls = entries.reduce((sum, [, e]) => sum + e.callCount, 0);
+    const totalCalls = entries.reduce((sum, [, entry]) => sum + entry.callCount, 0);
     const slowestFields = entries
+      // eslint-disable-next-line unicorn/no-array-sort -- The project targets the ES2022 TypeScript library.
       .sort(([, a], [, b]) => b.avgDuration - a.avgDuration)
       .slice(0, 10)
-      .map(([field, entry]) => ({ field, avgDuration: entry.avgDuration }));
+      .map(([field, entry]) => ({ avgDuration: entry.avgDuration, field }));
 
     return {
-      trackedFields: entries.length,
-      totalCalls,
       slowestFields,
+      totalCalls,
+      trackedFields: entries.length,
     };
   }
 }

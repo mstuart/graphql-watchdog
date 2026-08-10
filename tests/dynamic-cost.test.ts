@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { DynamicCostTracker } from '../src/cost/dynamic.js';
 import { ResolverInstrumenter } from '../src/detector/instrumenter.js';
 
+type InstrumentedResolver = (...parameters: unknown[]) => Promise<unknown>;
+
 describe('DynamicCostTracker', () => {
   describe('recordTiming', () => {
     it('should record timing for a single call', () => {
@@ -39,8 +41,8 @@ describe('DynamicCostTracker', () => {
     it('should compute p95 duration', () => {
       const tracker = new DynamicCostTracker();
       // Record 20 calls with durations 1-20
-      for (let i = 1; i <= 20; i++) {
-        tracker.recordTiming('Query', 'posts', i);
+      for (let index = 1; index <= 20; index += 1) {
+        tracker.recordTiming('Query', 'posts', index);
       }
 
       const data = tracker.export();
@@ -52,16 +54,20 @@ describe('DynamicCostTracker', () => {
   describe('toCostConfig', () => {
     it('should convert timing data to cost config', () => {
       const tracker = new DynamicCostTracker();
-      tracker.recordTiming('Query', 'posts', 50);   // 50ms -> cost 5
-      tracker.recordTiming('Post', 'author', 5);     // 5ms -> cost 1 (minimum)
-      tracker.recordTiming('Post', 'comments', 100); // 100ms -> cost 10
+      // 50ms -> cost 5
+      tracker.recordTiming('Query', 'posts', 50);
+      // 5ms -> cost 1 (minimum)
+      tracker.recordTiming('Post', 'author', 5);
+      // 100ms -> cost 10
+      tracker.recordTiming('Post', 'comments', 100);
 
       const config = tracker.toCostConfig({ baselineDuration: 10 });
 
       expect(config.costMap).toBeDefined();
-      expect(config.costMap!['Query.posts']).toBe(5);
-      expect(config.costMap!['Post.author']).toBe(1); // minimum 1
-      expect(config.costMap!['Post.comments']).toBe(10);
+      expect(config.costMap?.['Query.posts']).toBe(5);
+      // minimum 1
+      expect(config.costMap?.['Post.author']).toBe(1);
+      expect(config.costMap?.['Post.comments']).toBe(10);
     });
 
     it('should use default baseline of 10ms', () => {
@@ -69,31 +75,34 @@ describe('DynamicCostTracker', () => {
       tracker.recordTiming('Query', 'posts', 30);
 
       const config = tracker.toCostConfig();
-      expect(config.costMap!['Query.posts']).toBe(3);
+      expect(config.costMap?.['Query.posts']).toBe(3);
     });
 
     it('should round costs to nearest integer by default', () => {
       const tracker = new DynamicCostTracker();
-      tracker.recordTiming('Query', 'posts', 15); // 1.5 -> rounds to 2
+      // 1.5 -> rounds to 2
+      tracker.recordTiming('Query', 'posts', 15);
 
       const config = tracker.toCostConfig({ baselineDuration: 10 });
-      expect(config.costMap!['Query.posts']).toBe(2);
+      expect(config.costMap?.['Query.posts']).toBe(2);
     });
 
     it('should support custom rounding', () => {
       const tracker = new DynamicCostTracker();
-      tracker.recordTiming('Query', 'posts', 150); // 15 -> rounds to 15
+      // 15 -> rounds to 15
+      tracker.recordTiming('Query', 'posts', 150);
 
       const config = tracker.toCostConfig({ baselineDuration: 10, roundTo: 5 });
-      expect(config.costMap!['Query.posts']).toBe(15);
+      expect(config.costMap?.['Query.posts']).toBe(15);
     });
 
     it('should enforce minimum cost of 1', () => {
       const tracker = new DynamicCostTracker();
-      tracker.recordTiming('Query', 'simple', 0.5); // 0.05 -> would be 0, enforced to 1
+      // 0.05 -> would be 0, enforced to 1
+      tracker.recordTiming('Query', 'simple', 0.5);
 
       const config = tracker.toCostConfig({ baselineDuration: 10 });
-      expect(config.costMap!['Query.simple']).toBe(1);
+      expect(config.costMap?.['Query.simple']).toBe(1);
     });
 
     it('should assign higher costs to slower fields', () => {
@@ -102,7 +111,7 @@ describe('DynamicCostTracker', () => {
       tracker.recordTiming('Post', 'slow', 200);
 
       const config = tracker.toCostConfig({ baselineDuration: 10 });
-      expect(config.costMap!['Post.slow']).toBeGreaterThan(config.costMap!['Post.fast']);
+      expect(config.costMap?.['Post.slow']).toBeGreaterThan(config.costMap?.['Post.fast']);
     });
   });
 
@@ -121,13 +130,18 @@ describe('DynamicCostTracker', () => {
     it('should import previously saved data', () => {
       const tracker = new DynamicCostTracker();
       tracker.import({
-        'Query.posts': { avgDuration: 50, p95Duration: 60, callCount: 100, lastUpdated: Date.now() },
-        'Post.author': { avgDuration: 10, p95Duration: 15, callCount: 50, lastUpdated: Date.now() },
+        'Post.author': { avgDuration: 10, callCount: 50, lastUpdated: Date.now(), p95Duration: 15 },
+        'Query.posts': {
+          avgDuration: 50,
+          callCount: 100,
+          lastUpdated: Date.now(),
+          p95Duration: 60,
+        },
       });
 
       const config = tracker.toCostConfig({ baselineDuration: 10 });
-      expect(config.costMap!['Query.posts']).toBe(5);
-      expect(config.costMap!['Post.author']).toBe(1);
+      expect(config.costMap?.['Query.posts']).toBe(5);
+      expect(config.costMap?.['Post.author']).toBe(1);
     });
 
     it('should roundtrip export/import correctly', () => {
@@ -171,8 +185,8 @@ describe('DynamicCostTracker', () => {
 
     it('should limit slowest fields to top 10', () => {
       const tracker = new DynamicCostTracker();
-      for (let i = 0; i < 15; i++) {
-        tracker.recordTiming('Type', `field${i}`, i * 10);
+      for (let index = 0; index < 15; index += 1) {
+        tracker.recordTiming('Type', `field${index}`, index * 10);
       }
 
       const stats = tracker.getStats();
@@ -186,35 +200,36 @@ describe('DynamicCostTracker', () => {
       const instrumenter = new ResolverInstrumenter({ costTracker: tracker });
 
       const resolvers = {
-        Query: {
-          posts: async () => {
-            // Simulate some work
-            return [{ id: '1' }, { id: '2' }];
-          },
-        },
         Post: {
-          author: async (parent: { id: string }) => ({ id: 'a1', name: 'Author' }),
+          author: async () => ({ id: 'a1', name: 'Author' }),
+        },
+        Query: {
+          posts: async () =>
+            // Simulate some work
+            [{ id: '1' }, { id: '2' }],
         },
       };
 
       const instrumented = instrumenter.instrumentResolvers(resolvers);
 
       // Execute resolvers
-      const posts = await (instrumented.Query.posts as Function)(null, {}, {}, {});
+      const posts = await (instrumented.Query.posts as InstrumentedResolver)(null, {}, {}, {});
       for (const post of posts as { id: string }[]) {
-        await (instrumented.Post.author as Function)(post, {}, {}, {});
+        // eslint-disable-next-line no-await-in-loop -- Resolver calls intentionally model sequential GraphQL execution.
+        await (instrumented.Post.author as InstrumentedResolver)(post, {}, {}, {});
       }
 
       // Verify tracker received timing data
       const stats = tracker.getStats();
       expect(stats.trackedFields).toBe(2);
-      expect(stats.totalCalls).toBe(3); // 1 posts + 2 author calls
+      // 1 posts + 2 author calls
+      expect(stats.totalCalls).toBe(3);
 
       // Verify cost config can be generated
       const config = tracker.toCostConfig();
       expect(config.costMap).toBeDefined();
-      expect(config.costMap!['Query.posts']).toBeDefined();
-      expect(config.costMap!['Post.author']).toBeDefined();
+      expect(config.costMap?.['Query.posts']).toBeDefined();
+      expect(config.costMap?.['Post.author']).toBeDefined();
     });
 
     it('should work without costTracker (backward compatible)', async () => {
@@ -227,7 +242,7 @@ describe('DynamicCostTracker', () => {
       };
 
       const instrumented = instrumenter.instrumentResolvers(resolvers);
-      await (instrumented.Query.user as Function)(null, {}, {}, {});
+      await (instrumented.Query.user as InstrumentedResolver)(null, {}, {}, {});
 
       expect(instrumenter.getCalls()).toHaveLength(1);
     });
@@ -238,14 +253,16 @@ describe('DynamicCostTracker', () => {
 
       const resolvers = {
         Query: {
-          failing: async () => { throw new Error('fail'); },
+          failing: async () => {
+            throw new Error('fail');
+          },
         },
       };
 
       const instrumented = instrumenter.instrumentResolvers(resolvers);
 
       await expect(
-        (instrumented.Query.failing as Function)(null, {}, {}, {}),
+        (instrumented.Query.failing as InstrumentedResolver)(null, {}, {}, {}),
       ).rejects.toThrow('fail');
 
       const stats = tracker.getStats();

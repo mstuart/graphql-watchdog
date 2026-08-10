@@ -8,6 +8,8 @@ import { normalizeResponse } from '../../src/cache/normalizer.js';
 import { getMutationTypes } from '../../src/cache/invalidator.js';
 import type { CostConfig } from '../../src/types/index.js';
 
+type InstrumentedResolver = (...parameters: unknown[]) => Promise<unknown>;
+
 // Build a realistic schema with N+1-prone relationships
 const schema = buildSchema(`
   type Query {
@@ -47,33 +49,35 @@ describe('Integration: Full Flow', () => {
 
     // Simulate resolvers with intentional N+1 pattern
     const resolvers = {
-      Query: {
-        posts: async () => {
-          return [
-            { id: 'p1', title: 'First Post', body: 'Content 1' },
-            { id: 'p2', title: 'Second Post', body: 'Content 2' },
-            { id: 'p3', title: 'Third Post', body: 'Content 3' },
-            { id: 'p4', title: 'Fourth Post', body: 'Content 4' },
-            { id: 'p5', title: 'Fifth Post', body: 'Content 5' },
-          ];
-        },
-      },
       Post: {
-        author: async (parent: { id: string }) => {
+        author: async (parent: { id: string }) =>
           // This simulates an N+1 — each post makes a separate DB call for author
-          return { id: `author-${parent.id}`, name: `Author of ${parent.id}`, email: 'test@test.com' };
-        },
+          ({
+            email: 'test@test.com',
+            id: `author-${parent.id}`,
+            name: `Author of ${parent.id}`,
+          }),
+      },
+      Query: {
+        posts: async () => [
+          { body: 'Content 1', id: 'p1', title: 'First Post' },
+          { body: 'Content 2', id: 'p2', title: 'Second Post' },
+          { body: 'Content 3', id: 'p3', title: 'Third Post' },
+          { body: 'Content 4', id: 'p4', title: 'Fourth Post' },
+          { body: 'Content 5', id: 'p5', title: 'Fifth Post' },
+        ],
       },
     };
 
     const instrumented = instrumenter.instrumentResolvers(resolvers);
 
     // Execute the query flow
-    const posts = await (instrumented.Query.posts as Function)(null, {}, {}, {});
+    const posts = await (instrumented.Query.posts as InstrumentedResolver)(null, {}, {}, {});
 
     // Simulate N+1: resolve author for each post
     for (const post of posts as { id: string }[]) {
-      await (instrumented.Post.author as Function)(post, {}, {}, {});
+      // eslint-disable-next-line no-await-in-loop -- Resolver calls intentionally model sequential GraphQL execution.
+      await (instrumented.Post.author as InstrumentedResolver)(post, {}, {}, {});
     }
 
     // Analyze
@@ -150,19 +154,30 @@ describe('Integration: Full Flow', () => {
   });
 
   it('should cache a response and retrieve it', () => {
-    const cache = new ResponseCache({ maxSize: 100, ttl: 60000 });
+    const cache = new ResponseCache({ maxSize: 100, ttl: 60_000 });
 
     const responseData = {
       posts: [
-        { __typename: 'Post', id: 'p1', title: 'Hello', author: { __typename: 'User', id: 'u1', name: 'Alice' } },
-        { __typename: 'Post', id: 'p2', title: 'World', author: { __typename: 'User', id: 'u2', name: 'Bob' } },
+        {
+          __typename: 'Post',
+          author: { __typename: 'User', id: 'u1', name: 'Alice' },
+          id: 'p1',
+          title: 'Hello',
+        },
+        {
+          __typename: 'Post',
+          author: { __typename: 'User', id: 'u2', name: 'Bob' },
+          id: 'p2',
+          title: 'World',
+        },
       ],
     };
 
     const { entities, cacheKey } = normalizeResponse(responseData, 'GetPosts', { first: 10 });
 
     // Verify entities were extracted
-    expect(entities.length).toBeGreaterThanOrEqual(4); // 2 posts + 2 users
+    // 2 posts + 2 users
+    expect(entities.length).toBeGreaterThanOrEqual(4);
 
     // Store and retrieve
     cache.set(cacheKey, responseData, entities);
@@ -176,7 +191,7 @@ describe('Integration: Full Flow', () => {
   });
 
   it('should invalidate cache entries after detecting mutation types', () => {
-    const cache = new ResponseCache({ maxSize: 100, ttl: 60000 });
+    const cache = new ResponseCache({ maxSize: 100, ttl: 60_000 });
 
     // Cache a query response
     const data = { posts: [{ __typename: 'Post', id: 'p1', title: 'Hello' }] };
@@ -212,13 +227,6 @@ describe('Integration: Full Flow', () => {
     // Step 1: Instrument resolvers
     const instrumenter = new ResolverInstrumenter();
     const resolvers = {
-      Query: {
-        posts: async () => [
-          { id: '1', title: 'A' },
-          { id: '2', title: 'B' },
-          { id: '3', title: 'C' },
-        ],
-      },
       Post: {
         author: async (parent: { id: string }) => ({
           __typename: 'User',
@@ -226,14 +234,22 @@ describe('Integration: Full Flow', () => {
           name: `User ${parent.id}`,
         }),
       },
+      Query: {
+        posts: async () => [
+          { id: '1', title: 'A' },
+          { id: '2', title: 'B' },
+          { id: '3', title: 'C' },
+        ],
+      },
     };
 
     const instrumented = instrumenter.instrumentResolvers(resolvers);
 
     // Step 2: Execute
-    const posts = await (instrumented.Query.posts as Function)(null, {}, {}, {});
+    const posts = await (instrumented.Query.posts as InstrumentedResolver)(null, {}, {}, {});
     for (const post of posts as { id: string }[]) {
-      await (instrumented.Post.author as Function)(post, {}, {}, {});
+      // eslint-disable-next-line no-await-in-loop -- Resolver calls intentionally model sequential GraphQL execution.
+      await (instrumented.Post.author as InstrumentedResolver)(post, {}, {}, {});
     }
 
     // Step 3: Detect N+1

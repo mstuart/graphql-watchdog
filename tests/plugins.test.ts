@@ -1,7 +1,17 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import {
+  buildSchema,
+  parse,
+  execute,
+  GraphQLSchema,
+  GraphQLObjectType,
+  GraphQLString,
+  GraphQLList,
+  GraphQLNonNull,
+  GraphQLID,
+} from 'graphql';
 import { useWatchdog } from '../src/plugins/yoga.js';
 import { watchdogApolloPlugin } from '../src/plugins/apollo.js';
-import { buildSchema, parse, execute, GraphQLSchema, GraphQLObjectType, GraphQLString, GraphQLList, GraphQLNonNull, GraphQLID } from 'graphql';
 import type { N1Detection } from '../src/types/index.js';
 
 const schema = buildSchema(`
@@ -23,52 +33,52 @@ const schema = buildSchema(`
 `);
 
 // Schema with real resolvers for N+1 testing
-function createSchemaWithResolvers(): GraphQLSchema {
+const createSchemaWithResolvers = (): GraphQLSchema => {
   const users = [
     { id: '1', name: 'Alice' },
     { id: '2', name: 'Bob' },
     { id: '3', name: 'Charlie' },
   ];
   const posts = [
-    { id: 'p1', title: 'Post 1', authorId: '1' },
-    { id: 'p2', title: 'Post 2', authorId: '1' },
-    { id: 'p3', title: 'Post 3', authorId: '2' },
-    { id: 'p4', title: 'Post 4', authorId: '2' },
-    { id: 'p5', title: 'Post 5', authorId: '3' },
+    { authorId: '1', id: 'p1', title: 'Post 1' },
+    { authorId: '1', id: 'p2', title: 'Post 2' },
+    { authorId: '2', id: 'p3', title: 'Post 3' },
+    { authorId: '2', id: 'p4', title: 'Post 4' },
+    { authorId: '3', id: 'p5', title: 'Post 5' },
   ];
 
   const UserType = new GraphQLObjectType({
-    name: 'User',
     fields: () => ({
       id: { type: new GraphQLNonNull(GraphQLID) },
       name: { type: new GraphQLNonNull(GraphQLString) },
     }),
+    name: 'User',
   });
 
   const PostType = new GraphQLObjectType({
-    name: 'Post',
     fields: () => ({
+      author: {
+        resolve: (post: { authorId: string }) => users.find((u) => u.id === post.authorId),
+        type: new GraphQLNonNull(UserType),
+      },
       id: { type: new GraphQLNonNull(GraphQLID) },
       title: { type: new GraphQLNonNull(GraphQLString) },
-      author: {
-        type: new GraphQLNonNull(UserType),
-        resolve: (post: { authorId: string }) => users.find(u => u.id === post.authorId),
-      },
     }),
+    name: 'Post',
   });
 
   const QueryType = new GraphQLObjectType({
-    name: 'Query',
     fields: {
       posts: {
-        type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(PostType))),
         resolve: () => posts,
+        type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(PostType))),
       },
     },
+    name: 'Query',
   });
 
   return new GraphQLSchema({ query: QueryType });
-}
+};
 
 describe('Server Plugins', () => {
   describe('useWatchdog (Yoga)', () => {
@@ -77,7 +87,9 @@ describe('Server Plugins', () => {
       const testSchema = createSchemaWithResolvers();
       const plugin = useWatchdog({
         enableDetector: true,
-        onDetection: (d) => detections.push(...d),
+        onDetection: (items) => {
+          detections.push(...items);
+        },
       });
 
       const document = parse(`{
@@ -93,19 +105,19 @@ describe('Server Plugins', () => {
       // onExecute instruments schema and sets up context
       const { onExecuteDone } = plugin.onExecute({
         args: {
-          schema: testSchema,
-          document,
           contextValue,
+          document,
           operationName: null,
+          schema: testSchema,
           variableValues: null,
         },
       });
 
       // Actually execute the query — resolvers will record calls to context
       const result = await execute({
-        schema: testSchema,
-        document,
         contextValue,
+        document,
+        schema: testSchema,
       });
 
       expect(result.errors).toBeUndefined();
@@ -133,10 +145,16 @@ describe('Server Plugins', () => {
       const contextValue: Record<string, unknown> = {};
 
       const { onExecuteDone } = plugin.onExecute({
-        args: { schema: testSchema, document, contextValue, operationName: null, variableValues: null },
+        args: {
+          contextValue,
+          document,
+          operationName: null,
+          schema: testSchema,
+          variableValues: null,
+        },
       });
 
-      await execute({ schema: testSchema, document, contextValue });
+      await execute({ contextValue, document, schema: testSchema });
 
       const executionResult = onExecuteDone({
         result: { data: { posts: [] } },
@@ -147,8 +165,8 @@ describe('Server Plugins', () => {
 
     it('should support cache when enabled', () => {
       const plugin = useWatchdog({
-        enableCache: true,
         cache: { maxSize: 100, ttl: 5000 },
+        enableCache: true,
       });
 
       const cache = plugin.getCache();
@@ -163,18 +181,18 @@ describe('Server Plugins', () => {
 
     it('should cache responses when cache is enabled', () => {
       const plugin = useWatchdog({
-        enableCache: true,
         cache: { maxSize: 100, ttl: 5000 },
+        enableCache: true,
       });
 
       const document = parse(`query { user(id: "1") { name } }`);
 
       const { onExecuteDone } = plugin.onExecute({
         args: {
-          schema,
-          document,
           contextValue: {},
+          document,
           operationName: 'GetUser',
+          schema,
           variableValues: { id: '1' },
         },
       });
@@ -187,7 +205,10 @@ describe('Server Plugins', () => {
         },
       });
 
-      const cache = plugin.getCache()!;
+      const cache = plugin.getCache();
+      if (!cache) {
+        throw new Error('Expected plugin cache');
+      }
       const stats = cache.getStats();
       expect(stats.entries).toBe(1);
     });
@@ -208,7 +229,9 @@ describe('Server Plugins', () => {
       const detections: unknown[] = [];
       const plugin = watchdogApolloPlugin({
         enableDetector: true,
-        onDetection: (d) => detections.push(...d),
+        onDetection: (items) => {
+          detections.push(...items);
+        },
       });
 
       const requestContext = await plugin.requestDidStart({ schema });
@@ -216,15 +239,15 @@ describe('Server Plugins', () => {
 
       // Simulate multiple resolver calls to trigger N+1 detection
       // Call willResolveField multiple times for Post.author
-      for (let i = 0; i < 5; i++) {
-        const endFn = executionContext.willResolveField({
+      for (let index = 0; index < 5; index += 1) {
+        const endFunction = executionContext.willResolveField({
           info: {
             fieldName: 'author',
             parentType: { name: 'Post' },
             path: { key: 'author' },
           },
         });
-        endFn(null, { id: 'a1', name: 'Alice' });
+        endFunction(null, { id: 'a1', name: 'Alice' });
       }
 
       await requestContext.willSendResponse({
