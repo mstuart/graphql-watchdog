@@ -4,50 +4,48 @@ import { generateReport } from '../src/reporter/index.js';
 import type { PerformanceReport } from '../src/types/index.js';
 
 const sampleReport: PerformanceReport = {
-  timestamp: '2026-02-14T00:00:00.000Z',
-  duration: 150,
-  operations: [
-    {
-      operationName: 'GetPosts',
-      duration: 120,
-      resolverCalls: 11,
-      costEstimate: 31,
-    },
-    {
-      operationName: 'GetUsers',
-      duration: 80,
-      resolverCalls: 5,
-      costEstimate: 15,
-    },
-  ],
-  n1Detections: [
-    {
-      field: 'Post.author',
-      parentField: 'Query.posts',
-      callCount: 10,
-      suggestion: 'const authorLoader = new DataLoader(async (ids) => { /* batch */ });',
-      severity: 'critical',
-    },
-  ],
   cacheStats: {
+    entries: 25,
+    hitRate: 0.833,
     hits: 50,
     misses: 10,
-    hitRate: 0.833,
-    entries: 25,
   },
+  duration: 150,
+  n1Detections: [
+    {
+      callCount: 10,
+      field: 'Post.author',
+      parentField: 'Query.posts',
+      severity: 'critical',
+      suggestion: 'const authorLoader = new DataLoader(async (ids) => { /* batch */ });',
+    },
+  ],
+  operations: [
+    {
+      costEstimate: 31,
+      duration: 120,
+      operationName: 'GetPosts',
+      resolverCalls: 11,
+    },
+    {
+      costEstimate: 15,
+      duration: 80,
+      operationName: 'GetUsers',
+      resolverCalls: 5,
+    },
+  ],
+  timestamp: '2026-02-14T00:00:00.000Z',
 };
 
 describe('Performance Dashboard', () => {
   describe('calculatePerformanceScore', () => {
     it('should return 100 for a perfect report', () => {
       const perfect: PerformanceReport = {
-        timestamp: new Date().toISOString(),
+        cacheStats: { entries: 50, hitRate: 0.9, hits: 90, misses: 10 },
         duration: 10,
-        operations: [
-          { operationName: 'Simple', duration: 10, resolverCalls: 2, costEstimate: 5 },
-        ],
         n1Detections: [],
-        cacheStats: { hits: 90, misses: 10, hitRate: 0.9, entries: 50 },
+        operations: [{ costEstimate: 5, duration: 10, operationName: 'Simple', resolverCalls: 2 }],
+        timestamp: sampleReport.timestamp,
       };
 
       const score = calculatePerformanceScore(perfect);
@@ -57,89 +55,93 @@ describe('Performance Dashboard', () => {
 
     it('should penalize critical N+1 detections', () => {
       const report: PerformanceReport = {
-        timestamp: new Date().toISOString(),
         duration: 10,
-        operations: [],
         n1Detections: [
           {
+            callCount: 10,
             field: 'Post.author',
             parentField: 'Query.posts',
-            callCount: 10,
-            suggestion: 'DataLoader',
             severity: 'critical',
+            suggestion: 'DataLoader',
           },
         ],
+        operations: [],
+        timestamp: sampleReport.timestamp,
       };
 
       const score = calculatePerformanceScore(report);
-      expect(score).toBe(85); // 100 - 15
+      // 100 - 15
+      expect(score).toBe(85);
     });
 
     it('should penalize warning N+1 detections less', () => {
       const report: PerformanceReport = {
-        timestamp: new Date().toISOString(),
         duration: 10,
-        operations: [],
         n1Detections: [
           {
+            callCount: 5,
             field: 'Post.comments',
             parentField: 'Query.posts',
-            callCount: 5,
-            suggestion: 'DataLoader',
             severity: 'warning',
+            suggestion: 'DataLoader',
           },
         ],
+        operations: [],
+        timestamp: sampleReport.timestamp,
       };
 
       const score = calculatePerformanceScore(report);
-      expect(score).toBe(92); // 100 - 8
+      // 100 - 8
+      expect(score).toBe(92);
     });
 
     it('should penalize low cache hit rate', () => {
       const report: PerformanceReport = {
-        timestamp: new Date().toISOString(),
+        cacheStats: { entries: 100, hitRate: 0.05, hits: 5, misses: 95 },
         duration: 10,
-        operations: [],
         n1Detections: [],
-        cacheStats: { hits: 5, misses: 95, hitRate: 0.05, entries: 100 },
+        operations: [],
+        timestamp: sampleReport.timestamp,
       };
 
       const score = calculatePerformanceScore(report);
-      expect(score).toBe(90); // 100 - 10
+      // 100 - 10
+      expect(score).toBe(90);
     });
 
     it('should penalize high cost operations', () => {
       const report: PerformanceReport = {
-        timestamp: new Date().toISOString(),
         duration: 10,
-        operations: [
-          { operationName: 'Expensive', duration: 10, resolverCalls: 100, costEstimate: 600 },
-        ],
         n1Detections: [],
+        operations: [
+          { costEstimate: 600, duration: 10, operationName: 'Expensive', resolverCalls: 100 },
+        ],
+        timestamp: sampleReport.timestamp,
       };
 
       const score = calculatePerformanceScore(report);
-      expect(score).toBe(90); // 100 - 10
+      // 100 - 10
+      expect(score).toBe(90);
     });
 
     it('should never go below 0', () => {
       const report: PerformanceReport = {
-        timestamp: new Date().toISOString(),
+        cacheStats: { entries: 0, hitRate: 0, hits: 0, misses: 100 },
         duration: 5000,
-        operations: Array.from({ length: 20 }, (_, i) => ({
-          operationName: `Op${i}`,
-          duration: 2000,
-          resolverCalls: 100,
-          costEstimate: 1000,
-        })),
-        n1Detections: Array.from({ length: 10 }, (_, i) => ({
-          field: `Type${i}.field`,
-          parentField: 'Query.list',
+        n1Detections: Array.from({ length: 10 }, (_, index) => ({
           callCount: 20,
-          suggestion: 'DataLoader',
+          field: `Type${index}.field`,
+          parentField: 'Query.list',
           severity: 'critical' as const,
+          suggestion: 'DataLoader',
         })),
-        cacheStats: { hits: 0, misses: 100, hitRate: 0, entries: 0 },
+        operations: Array.from({ length: 20 }, (_, index) => ({
+          costEstimate: 1000,
+          duration: 2000,
+          operationName: `Op${index}`,
+          resolverCalls: 100,
+        })),
+        timestamp: sampleReport.timestamp,
       };
 
       const score = calculatePerformanceScore(report);
@@ -148,11 +150,11 @@ describe('Performance Dashboard', () => {
 
     it('should never exceed 100', () => {
       const report: PerformanceReport = {
-        timestamp: new Date().toISOString(),
+        cacheStats: { entries: 50, hitRate: 1, hits: 100, misses: 0 },
         duration: 1,
-        operations: [],
         n1Detections: [],
-        cacheStats: { hits: 100, misses: 0, hitRate: 1, entries: 50 },
+        operations: [],
+        timestamp: sampleReport.timestamp,
       };
 
       const score = calculatePerformanceScore(report);
@@ -170,6 +172,7 @@ describe('Performance Dashboard', () => {
       expect(html).toContain('<body>');
     });
 
+    // eslint-disable-next-line sonarjs/parameterized-tests -- Each assertion documents a distinct dashboard section.
     it('should include dashboard title', () => {
       const html = generateDashboard(sampleReport);
       expect(html).toContain('graphql-watchdog Dashboard');
@@ -180,6 +183,7 @@ describe('Performance Dashboard', () => {
       expect(html).toContain('Performance Score');
     });
 
+    // eslint-disable-next-line sonarjs/parameterized-tests -- Each assertion documents a distinct dashboard section.
     it('should include N+1 hotspots table', () => {
       const html = generateDashboard(sampleReport);
       expect(html).toContain('N+1 Hotspots');
@@ -220,8 +224,8 @@ describe('Performance Dashboard', () => {
     it('should not include cache section when no cache stats', () => {
       const report: PerformanceReport = {
         ...sampleReport,
-        cacheStats: undefined,
       };
+      delete report.cacheStats;
 
       const html = generateDashboard(report);
       expect(html).not.toContain('Cache Performance');
@@ -249,11 +253,11 @@ describe('Performance Dashboard', () => {
         ...sampleReport,
         n1Detections: [
           {
+            callCount: 5,
             field: '<script>alert("xss")</script>',
             parentField: 'Query.posts',
-            callCount: 5,
-            suggestion: 'DataLoader',
             severity: 'warning',
+            suggestion: 'DataLoader',
           },
         ],
       };

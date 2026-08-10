@@ -1,7 +1,4 @@
 import {
-  type DocumentNode,
-  type GraphQLSchema,
-  type GraphQLOutputType,
   visit,
   Kind,
   TypeInfo,
@@ -10,55 +7,70 @@ import {
   isNonNullType,
   isObjectType,
 } from 'graphql';
+import type { DocumentNode, GraphQLSchema, GraphQLOutputType } from 'graphql';
 import type { CostBreakdown } from './analyzer.js';
 import type { CostConfig } from '../types/index.js';
 
 export interface OptimizationSuggestion {
-  type: 'pagination' | 'field-pruning' | 'fragment' | 'dataloader' | 'depth-reduction';
+  type: (typeof SUGGESTION_TYPES)[keyof typeof SUGGESTION_TYPES];
   severity: 'high' | 'medium' | 'low';
   field: string;
   message: string;
   estimatedSaving: number;
 }
 
-function isListLikeType(type: GraphQLOutputType): boolean {
-  if (isListType(type)) return true;
-  if (isNonNullType(type)) return isListLikeType(type.ofType);
-  return false;
-}
+const SUGGESTION_TYPES = {
+  dataloader: 'dataloader',
+  depthReduction: 'depth-reduction',
+  fieldPruning: 'field-pruning',
+  fragment: 'fragment',
+  pagination: 'pagination',
+} as const;
 
-function unwrapType(type: GraphQLOutputType): GraphQLOutputType {
+const isListLikeType = (type: GraphQLOutputType): boolean => {
+  if (isListType(type)) {
+    return true;
+  }
+  if (isNonNullType(type)) {
+    return isListLikeType(type.ofType);
+  }
+  return false;
+};
+
+const unwrapType = (type: GraphQLOutputType): GraphQLOutputType => {
   if (isNonNullType(type) || isListType(type)) {
     return unwrapType(type.ofType);
   }
   return type;
-}
+};
 
-function getMaxDepth(node: DocumentNode): number {
+const getMaxDepth = (node: DocumentNode): number => {
   let maxDepth = 0;
   let currentDepth = 0;
 
   visit(node, {
     Field: {
       enter() {
-        currentDepth++;
-        if (currentDepth > maxDepth) maxDepth = currentDepth;
+        currentDepth += 1;
+        if (currentDepth > maxDepth) {
+          maxDepth = currentDepth;
+        }
       },
       leave() {
-        currentDepth--;
+        currentDepth -= 1;
       },
     },
   });
 
   return maxDepth;
-}
+};
 
 interface SelectionFingerprint {
   fieldNames: string;
   path: string;
 }
 
-function getSelectionFingerprints(document: DocumentNode): SelectionFingerprint[] {
+const getSelectionFingerprints = (document: DocumentNode): SelectionFingerprint[] => {
   const fingerprints: SelectionFingerprint[] = [];
   const pathStack: string[] = [];
 
@@ -68,11 +80,11 @@ function getSelectionFingerprints(document: DocumentNode): SelectionFingerprint[
         pathStack.push(node.name.value);
 
         if (node.selectionSet && node.selectionSet.selections.length > 0) {
-          const fieldNames = node.selectionSet.selections
+          const selectedFieldNames = node.selectionSet.selections
             .filter((s) => s.kind === Kind.FIELD)
-            .map((s) => (s as { name: { value: string } }).name.value)
-            .sort()
-            .join(',');
+            .map((s) => (s as { name: { value: string } }).name.value);
+          selectedFieldNames.sort((left, right) => left.localeCompare(right));
+          const fieldNames = selectedFieldNames.join(',');
 
           if (fieldNames) {
             fingerprints.push({
@@ -89,14 +101,15 @@ function getSelectionFingerprints(document: DocumentNode): SelectionFingerprint[
   });
 
   return fingerprints;
-}
+};
 
-export function suggestOptimizations(
+export const suggestOptimizations = (
   breakdown: CostBreakdown,
   document: DocumentNode,
   schema: GraphQLSchema,
   config?: CostConfig,
-): OptimizationSuggestion[] {
+  // eslint-disable-next-line @typescript-eslint/max-params -- Optimization suggestions accept the established public API arguments.
+): OptimizationSuggestion[] => {
   const suggestions: OptimizationSuggestion[] = [];
   const defaultListMultiplier = config?.defaultListMultiplier ?? 10;
 
@@ -105,16 +118,19 @@ export function suggestOptimizations(
   visit(
     document,
     visitWithTypeInfo(typeInfo, {
-      Field(node) {
-        const fieldDef = typeInfo.getFieldDef();
-        if (!fieldDef) return;
+      // eslint-disable-next-line sonarjs/function-name -- GraphQL visitor keys use AST node names.
+      Field: (node) => {
+        const fieldDefinition = typeInfo.getFieldDef();
+        if (!fieldDefinition) {
+          return;
+        }
 
-        if (isListLikeType(fieldDef.type)) {
-          const hasPaginationArg = node.arguments?.some((arg) =>
-            ['first', 'limit', 'last', 'take'].includes(arg.name.value),
+        if (isListLikeType(fieldDefinition.type)) {
+          const hasPaginationArgument = node.arguments?.some((argument) =>
+            ['first', 'limit', 'last', 'take'].includes(argument.name.value),
           );
 
-          if (!hasPaginationArg) {
+          if (!hasPaginationArgument) {
             const parentType = typeInfo.getParentType();
             const fieldPath = parentType
               ? `${parentType.name}.${node.name.value}`
@@ -129,11 +145,11 @@ export function suggestOptimizations(
               : defaultListMultiplier;
 
             suggestions.push({
-              type: 'pagination',
-              severity: 'high',
+              estimatedSaving,
               field: fieldPath,
               message: `Add \`first: N\` argument to ${fieldPath} to limit results and reduce cost`,
-              estimatedSaving,
+              severity: 'high',
+              type: SUGGESTION_TYPES.pagination,
             });
           }
         }
@@ -147,11 +163,11 @@ export function suggestOptimizations(
       const contribution = fc.cost / breakdown.totalCost;
       if (contribution > 0.3 && fc.path.split('.').length >= 3) {
         suggestions.push({
-          type: 'field-pruning',
-          severity: 'medium',
+          estimatedSaving: fc.cost * 0.3,
           field: fc.path,
           message: `Field ${fc.path} contributes ${(contribution * 100).toFixed(0)}% of query cost (${fc.cost}/${breakdown.totalCost}). Consider removing or simplifying`,
-          estimatedSaving: fc.cost * 0.3,
+          severity: 'medium',
+          type: SUGGESTION_TYPES.fieldPruning,
         });
       }
     }
@@ -161,11 +177,11 @@ export function suggestOptimizations(
   const depth = getMaxDepth(document);
   if (depth > 5) {
     suggestions.push({
-      type: 'depth-reduction',
-      severity: depth > 8 ? 'high' : 'medium',
+      estimatedSaving: breakdown.totalCost * 0.2,
       field: '<root>',
       message: `Query depth is ${depth} levels; consider splitting into separate queries or reducing nesting`,
-      estimatedSaving: breakdown.totalCost * 0.2,
+      severity: depth > 8 ? 'high' : 'medium',
+      type: SUGGESTION_TYPES.depthReduction,
     });
   }
 
@@ -178,16 +194,18 @@ export function suggestOptimizations(
     seen.set(fp.fieldNames, existing);
   }
   for (const [fieldNames, paths] of seen) {
-    if (paths.length >= 2) {
-      const fields = fieldNames.split(',').join(', ');
-      suggestions.push({
-        type: 'fragment',
-        severity: 'low',
-        field: paths[0],
-        message: `Selection set (${fields}) appears ${paths.length} times at ${paths.join(', ')}; use a fragment to reduce duplication`,
-        estimatedSaving: breakdown.totalCost * 0.05,
-      });
+    if (paths.length < 2) {
+      continue;
     }
+
+    const fields = fieldNames.replaceAll(',', ', ');
+    suggestions.push({
+      estimatedSaving: breakdown.totalCost * 0.05,
+      field: paths[0],
+      message: `Selection set (${fields}) appears ${paths.length} times at ${paths.join(', ')}; use a fragment to reduce duplication`,
+      severity: 'low',
+      type: SUGGESTION_TYPES.fragment,
+    });
   }
 
   // 5. DATALOADER: Look for fields that appear under list parents (potential N+1)
@@ -199,25 +217,25 @@ export function suggestOptimizations(
     visitWithTypeInfo(typeInfo2, {
       Field: {
         enter(node) {
-          const fieldDef = typeInfo2.getFieldDef();
-          const isUnderList = listParentStack[listParentStack.length - 1];
+          const fieldDefinition = typeInfo2.getFieldDef();
+          const isUnderList = listParentStack.at(-1) ?? false;
 
-          if (fieldDef && isUnderList && isObjectType(unwrapType(fieldDef.type))) {
+          if (fieldDefinition && isUnderList && isObjectType(unwrapType(fieldDefinition.type))) {
             const parentType = typeInfo2.getParentType();
             const fieldPath = parentType
               ? `${parentType.name}.${node.name.value}`
               : node.name.value;
 
             suggestions.push({
-              type: 'dataloader',
-              severity: 'high',
+              estimatedSaving: breakdown.totalCost * 0.3,
               field: fieldPath,
               message: `${fieldPath} resolves an object under a list parent, likely causing N+1 queries. Use DataLoader for batching`,
-              estimatedSaving: breakdown.totalCost * 0.3,
+              severity: 'high',
+              type: SUGGESTION_TYPES.dataloader,
             });
           }
 
-          const isList = fieldDef ? isListLikeType(fieldDef.type) : false;
+          const isList = fieldDefinition ? isListLikeType(fieldDefinition.type) : false;
           listParentStack.push(isList || isUnderList);
         },
         leave() {
@@ -228,7 +246,6 @@ export function suggestOptimizations(
   );
 
   // Sort by estimated saving descending
-  suggestions.sort((a, b) => b.estimatedSaving - a.estimatedSaving);
-
-  return suggestions;
-}
+  // eslint-disable-next-line unicorn/no-array-sort -- The project targets the ES2022 TypeScript library.
+  return suggestions.sort((a, b) => b.estimatedSaving - a.estimatedSaving);
+};

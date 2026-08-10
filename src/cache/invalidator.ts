@@ -1,46 +1,48 @@
 import {
-  type DocumentNode,
-  type GraphQLSchema,
   visit,
   TypeInfo,
   visitWithTypeInfo,
   isObjectType,
   isNonNullType,
   isListType,
-  type GraphQLOutputType,
 } from 'graphql';
+import type { DocumentNode, GraphQLSchema, GraphQLOutputType } from 'graphql';
 
-function unwrapType(type: GraphQLOutputType): GraphQLOutputType {
+const unwrapType = (type: GraphQLOutputType): GraphQLOutputType => {
   if (isNonNullType(type) || isListType(type)) {
     return unwrapType(type.ofType);
   }
   return type;
-}
+};
 
-export function getMutationTypes(document: DocumentNode, schema: GraphQLSchema): string[] {
+export const getMutationTypes = (document: DocumentNode, schema: GraphQLSchema): string[] => {
   const typeNames = new Set<string>();
   const typeInfo = new TypeInfo(schema);
 
   visit(
     document,
     visitWithTypeInfo(typeInfo, {
-      OperationDefinition(node) {
-        if (node.operation !== 'mutation') {
-          return false; // Skip non-mutation operations
-        }
-        return undefined;
-      },
-      Field() {
-        const fieldDef = typeInfo.getFieldDef();
-        if (fieldDef) {
-          const returnType = unwrapType(fieldDef.type);
+      // eslint-disable-next-line sonarjs/function-name -- GraphQL visitor keys use AST node names.
+      Field: () => {
+        const fieldDefinition = typeInfo.getFieldDef();
+        if (fieldDefinition) {
+          const returnType = unwrapType(fieldDefinition.type);
           if (isObjectType(returnType)) {
             typeNames.add(returnType.name);
           }
         }
       },
+      // eslint-disable-next-line sonarjs/function-name -- GraphQL visitor keys use AST node names.
+      OperationDefinition: (node) => {
+        if (node.operation !== 'mutation') {
+          // Skip non-mutation operations
+          return false;
+        }
+        // eslint-disable-next-line unicorn/no-useless-undefined -- GraphQL uses undefined to continue visitor traversal.
+        return undefined;
+      },
     }),
   );
 
   return [...typeNames];
-}
+};

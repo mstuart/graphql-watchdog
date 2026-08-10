@@ -1,8 +1,7 @@
-import type { WatchdogConfig, N1Detection } from '../types/index.js';
 import { ResolverInstrumenter } from '../detector/instrumenter.js';
 import { analyzeForN1 } from '../detector/analyzer.js';
 import { ResponseCache } from '../cache/store.js';
-import type { GraphQLSchema } from 'graphql';
+import type { WatchdogConfig, N1Detection } from '../types/index.js';
 
 export interface ApolloWatchdogContext {
   _watchdogInstrumenter?: ResolverInstrumenter;
@@ -13,35 +12,49 @@ export interface WatchdogApolloPluginOptions extends WatchdogConfig {
   onDetection?: (detections: N1Detection[]) => void;
 }
 
-export function watchdogApolloPlugin(config?: WatchdogApolloPluginOptions) {
+interface ApolloFieldInfo {
+  fieldName: string;
+  parentType: { name: string };
+  path: { key: string | number };
+}
+
+const createFieldCompletion =
+  (
+    instrumenter: ResolverInstrumenter,
+    info: ApolloFieldInfo,
+    fieldStartTime: number,
+  ): (() => void) =>
+  () => {
+    // eslint-disable-next-line compat/compat -- This package targets Node.js 22.
+    const duration = performance.now() - fieldStartTime;
+    instrumenter.recordCall({
+      batchKey: `${info.parentType.name}.${info.fieldName}`,
+      duration,
+      fieldName: info.fieldName,
+      parentId: null,
+      timestamp: Date.now(),
+      typeName: info.parentType.name,
+    });
+  };
+
+export const watchdogApolloPlugin = (config?: WatchdogApolloPluginOptions) => {
   const cache = config?.enableCache ? new ResponseCache(config.cache) : null;
 
   return {
-    async requestDidStart({ schema: _schema }: { schema?: GraphQLSchema } = {}) {
+    getCache: (): ResponseCache | null => cache,
+    async requestDidStart() {
       const instrumenter = new ResolverInstrumenter();
 
       return {
-        async executionDidStart() {
-          return {
-            willResolveField({ info }: { info: { fieldName: string; parentType: { name: string }; path: { key: string | number } } }) {
-              const fieldStartTime = performance.now();
-              return (_error: unknown, _result: unknown) => {
-                const duration = performance.now() - fieldStartTime;
-                // Record the resolver call manually since we can't wrap resolvers in Apollo
-                instrumenter['calls'].push({
-                  fieldName: info.fieldName,
-                  typeName: info.parentType.name,
-                  parentId: null,
-                  timestamp: Date.now(),
-                  duration,
-                  batchKey: `${info.parentType.name}.${info.fieldName}`,
-                });
-              };
-            },
-          };
-        },
+        executionDidStart: async () => ({
+          willResolveField: ({ info }: { info: ApolloFieldInfo }) => {
+            // eslint-disable-next-line compat/compat -- This package targets Node.js 22.
+            const fieldStartTime = performance.now();
+            return createFieldCompletion(instrumenter, info, fieldStartTime);
+          },
+        }),
 
-        async willSendResponse({ response: _response }: { response: { body?: { singleResult?: { data?: Record<string, unknown>; errors?: unknown[] } } } }) {
+        async willSendResponse() {
           const calls = instrumenter.getCalls();
 
           // Analyze for N+1
@@ -63,9 +76,5 @@ export function watchdogApolloPlugin(config?: WatchdogApolloPluginOptions) {
         },
       };
     },
-
-    getCache(): ResponseCache | null {
-      return cache;
-    },
   };
-}
+};

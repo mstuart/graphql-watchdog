@@ -1,60 +1,96 @@
 import type { PerformanceReport, CacheStats } from '../types/index.js';
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+const escapeHtml = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 
-export function calculatePerformanceScore(report: PerformanceReport): number {
+export const calculatePerformanceScore = (report: PerformanceReport): number => {
   let score = 100;
 
   // N+1 detections penalty
   for (const d of report.n1Detections) {
-    if (d.severity === 'critical') {
-      score -= 15;
-    } else {
-      score -= 8;
-    }
+    score -= d.severity === 'critical' ? 15 : 8;
   }
 
   // Cost penalty: high cost operations
   for (const op of report.operations) {
-    if (op.costEstimate > 500) score -= 10;
-    else if (op.costEstimate > 200) score -= 5;
+    if (op.costEstimate > 500) {
+      score -= 10;
+    } else if (op.costEstimate > 200) {
+      score -= 5;
+    }
   }
 
   // Cache hit rate bonus/penalty
   if (report.cacheStats) {
-    if (report.cacheStats.hitRate < 0.3) score -= 10;
-    else if (report.cacheStats.hitRate < 0.5) score -= 5;
-    else if (report.cacheStats.hitRate > 0.8) score += 5;
+    if (report.cacheStats.hitRate < 0.3) {
+      score -= 10;
+    } else if (report.cacheStats.hitRate < 0.5) {
+      score -= 5;
+    } else if (report.cacheStats.hitRate > 0.8) {
+      score += 5;
+    }
   }
 
   // Slow operations penalty
   for (const op of report.operations) {
-    if (op.duration > 1000) score -= 10;
-    else if (op.duration > 500) score -= 5;
+    if (op.duration > 1000) {
+      score -= 10;
+    } else if (op.duration > 500) {
+      score -= 5;
+    }
   }
 
   return Math.max(0, Math.min(100, score));
-}
+};
 
-function scoreColor(score: number): string {
-  if (score >= 80) return '#22c55e';
-  if (score >= 60) return '#eab308';
-  if (score >= 40) return '#f97316';
+const scoreColor = (score: number): string => {
+  if (score >= 80) {
+    return '#22c55e';
+  }
+  if (score >= 60) {
+    return '#eab308';
+  }
+  if (score >= 40) {
+    return '#f97316';
+  }
   return '#ef4444';
-}
+};
 
-function severityColor(severity: string): string {
-  if (severity === 'critical') return '#ef4444';
+const severityColor = (severity: string): string => {
+  if (severity === 'critical') {
+    return '#ef4444';
+  }
   return '#eab308';
-}
+};
 
-function generateScoreGauge(score: number): string {
+const cacheColor = (hitRate: number): string => {
+  if (hitRate >= 80) {
+    return '#22c55e';
+  }
+  if (hitRate >= 50) {
+    return '#eab308';
+  }
+  return '#ef4444';
+};
+
+const performanceStatus = (score: number): string => {
+  if (score >= 80) {
+    return 'Good';
+  }
+  if (score >= 60) {
+    return 'Fair';
+  }
+  if (score >= 40) {
+    return 'Needs Improvement';
+  }
+  return 'Critical';
+};
+
+const generateScoreGauge = (score: number): string => {
   const color = scoreColor(score);
   const angle = (score / 100) * 360;
   const radians = ((angle - 90) * Math.PI) / 180;
@@ -71,24 +107,25 @@ function generateScoreGauge(score: number): string {
     }
     <text x="50" y="55" text-anchor="middle" fill="${color}" font-size="20" font-weight="bold">${score}</text>
   </svg>`;
-}
+};
 
-function generateCostBarChart(fieldCosts: { path: string; cost: number }[]): string {
-  const top = fieldCosts
-    .sort((a, b) => b.cost - a.cost)
-    .slice(0, 10);
+const generateCostBarChart = (fieldCosts: { path: string; cost: number }[]): string => {
+  // eslint-disable-next-line unicorn/no-array-sort -- The project targets the ES2022 TypeScript library.
+  const top = [...fieldCosts].sort((a, b) => b.cost - a.cost).slice(0, 10);
 
-  if (top.length === 0) return '<p style="color:#94a3b8">No cost data</p>';
+  if (top.length === 0) {
+    return '<p style="color:#94a3b8">No cost data</p>';
+  }
 
   const maxCost = top[0].cost;
   const barHeight = 28;
   const chartHeight = top.length * barHeight + 20;
 
   const bars = top
-    .map((fc, i) => {
+    .map((fc, index) => {
       const barWidth = maxCost > 0 ? (fc.cost / maxCost) * 300 : 0;
-      const y = i * barHeight + 10;
-      const label = fc.path.length > 25 ? '...' + fc.path.slice(-22) : fc.path;
+      const y = index * barHeight + 10;
+      const label = fc.path.length > 25 ? `...${fc.path.slice(-22)}` : fc.path;
       return `
         <g>
           <rect x="120" y="${y}" width="${barWidth}" height="20" rx="3" fill="#6366f1" opacity="0.8"/>
@@ -101,21 +138,9 @@ function generateCostBarChart(fieldCosts: { path: string; cost: number }[]): str
   return `<svg viewBox="0 0 500 ${chartHeight}" width="100%" height="${chartHeight}">
     ${bars}
   </svg>`;
-}
+};
 
-function generateCacheGauge(stats: CacheStats): string {
-  const hitRate = stats.hitRate * 100;
-  const color = hitRate >= 80 ? '#22c55e' : hitRate >= 50 ? '#eab308' : '#ef4444';
-
-  return `<div style="text-align:center">
-    ${generateScoreGaugeGeneric(hitRate, color, '%')}
-    <div style="margin-top:8px;color:#94a3b8;font-size:13px">
-      <span>Hits: ${stats.hits}</span> | <span>Misses: ${stats.misses}</span> | <span>Entries: ${stats.entries}</span>
-    </div>
-  </div>`;
-}
-
-function generateScoreGaugeGeneric(value: number, color: string, suffix: string): string {
+const generateScoreGaugeGeneric = (value: number, color: string, suffix: string): string => {
   const angle = (Math.min(value, 100) / 100) * 360;
   const radians = ((angle - 90) * Math.PI) / 180;
   const x = 50 + 40 * Math.cos(radians);
@@ -131,9 +156,21 @@ function generateScoreGaugeGeneric(value: number, color: string, suffix: string)
     }
     <text x="50" y="50" text-anchor="middle" fill="${color}" font-size="14" font-weight="bold">${value.toFixed(0)}${suffix}</text>
   </svg>`;
-}
+};
 
-export function generateDashboard(report: PerformanceReport): string {
+const generateCacheGauge = (stats: CacheStats): string => {
+  const hitRate = stats.hitRate * 100;
+  const color = cacheColor(hitRate);
+
+  return `<div style="text-align:center">
+    ${generateScoreGaugeGeneric(hitRate, color, '%')}
+    <div style="margin-top:8px;color:#94a3b8;font-size:13px">
+      <span>Hits: ${stats.hits}</span> | <span>Misses: ${stats.misses}</span> | <span>Entries: ${stats.entries}</span>
+    </div>
+  </div>`;
+};
+
+export const generateDashboard = (report: PerformanceReport): string => {
   const score = calculatePerformanceScore(report);
   const scoreGauge = generateScoreGauge(score);
 
@@ -150,14 +187,16 @@ export function generateDashboard(report: PerformanceReport): string {
     .join('');
 
   // Cost breakdown
-  const allFieldCosts = report.operations.length > 0
-    ? report.operations.map((op) => ({
-        path: op.operationName ?? '<anonymous>',
-        cost: op.costEstimate,
-      }))
-    : [];
+  const allFieldCosts =
+    report.operations.length > 0
+      ? report.operations.map((op) => ({
+          cost: op.costEstimate,
+          path: op.operationName ?? '<anonymous>',
+        }))
+      : [];
 
   // Slowest operations
+  // eslint-disable-next-line unicorn/no-array-sort -- The project targets the ES2022 TypeScript library.
   const sortedOps = [...report.operations].sort((a, b) => b.duration - a.duration);
   const slowOpsRows = sortedOps
     .map(
@@ -177,6 +216,7 @@ export function generateDashboard(report: PerformanceReport): string {
       ${generateCacheGauge(report.cacheStats)}
     </div>`
     : '';
+  const status = performanceStatus(score);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -230,7 +270,7 @@ export function generateDashboard(report: PerformanceReport): string {
       ${scoreGauge}
       <div>
         <div class="score-label">Overall Health</div>
-        <div class="score-status" style="color:${scoreColor(score)}">${score >= 80 ? 'Good' : score >= 60 ? 'Fair' : score >= 40 ? 'Needs Improvement' : 'Critical'}</div>
+        <div class="score-status" style="color:${scoreColor(score)}">${status}</div>
         <div class="score-label" style="margin-top:4px">
           ${report.n1Detections.length} N+1 issues |
           ${report.operations.length} operations
@@ -294,4 +334,4 @@ export function generateDashboard(report: PerformanceReport): string {
 
 </body>
 </html>`;
-}
+};

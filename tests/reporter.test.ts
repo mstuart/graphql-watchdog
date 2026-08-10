@@ -7,31 +7,32 @@ import type { CostBreakdown } from '../src/cost/analyzer.js';
 
 describe('Reporter', () => {
   const sampleReport: PerformanceReport = {
-    timestamp: '2026-02-14T00:00:00.000Z',
-    duration: 150,
-    operations: [
-      {
-        operationName: 'GetPosts',
-        duration: 120,
-        resolverCalls: 11,
-        costEstimate: 31,
-      },
-    ],
-    n1Detections: [
-      {
-        field: 'Post.author',
-        parentField: 'Query.posts',
-        callCount: 10,
-        suggestion: 'const authorLoader = new DataLoader(async (ids) => { /* batch load Post by ids */ });',
-        severity: 'critical',
-      },
-    ],
     cacheStats: {
+      entries: 25,
+      hitRate: 0.833,
       hits: 50,
       misses: 10,
-      hitRate: 0.833,
-      entries: 25,
     },
+    duration: 150,
+    n1Detections: [
+      {
+        callCount: 10,
+        field: 'Post.author',
+        parentField: 'Query.posts',
+        severity: 'critical',
+        suggestion:
+          'const authorLoader = new DataLoader(async (ids) => { /* batch load Post by ids */ });',
+      },
+    ],
+    operations: [
+      {
+        costEstimate: 31,
+        duration: 120,
+        operationName: 'GetPosts',
+        resolverCalls: 11,
+      },
+    ],
+    timestamp: '2026-02-14T00:00:00.000Z',
   };
 
   describe('generateReport', () => {
@@ -66,11 +67,11 @@ describe('Reporter', () => {
     it('should format detections with severity', () => {
       const detections: N1Detection[] = [
         {
+          callCount: 10,
           field: 'Post.author',
           parentField: 'Query.posts',
-          callCount: 10,
-          suggestion: 'Use DataLoader',
           severity: 'critical',
+          suggestion: 'Use DataLoader',
         },
       ];
 
@@ -88,11 +89,11 @@ describe('Reporter', () => {
     it('should format warning severity', () => {
       const detections: N1Detection[] = [
         {
+          callCount: 5,
           field: 'Post.comments',
           parentField: 'Query.posts',
-          callCount: 5,
-          suggestion: 'Use DataLoader',
           severity: 'warning',
+          suggestion: 'Use DataLoader',
         },
       ];
 
@@ -104,13 +105,13 @@ describe('Reporter', () => {
   describe('formatCostBreakdown', () => {
     it('should format cost within limit', () => {
       const breakdown: CostBreakdown = {
-        totalCost: 10,
-        fieldCosts: [
-          { path: 'user', cost: 1 },
-          { path: 'user.name', cost: 1 },
-        ],
         exceeds: false,
+        fieldCosts: [
+          { cost: 1, path: 'user' },
+          { cost: 1, path: 'user.name' },
+        ],
         limit: 100,
+        totalCost: 10,
       };
 
       const output = formatCostBreakdown(breakdown);
@@ -120,10 +121,10 @@ describe('Reporter', () => {
 
     it('should format cost exceeding limit', () => {
       const breakdown: CostBreakdown = {
-        totalCost: 500,
-        fieldCosts: [],
         exceeds: true,
+        fieldCosts: [],
         limit: 100,
+        totalCost: 500,
       };
 
       const output = formatCostBreakdown(breakdown);
@@ -140,10 +141,10 @@ describe('Reporter', () => {
 
     it('should produce valid JSON for cost breakdown', () => {
       const breakdown: CostBreakdown = {
-        totalCost: 42,
-        fieldCosts: [{ path: 'user', cost: 42 }],
         exceeds: false,
+        fieldCosts: [{ cost: 42, path: 'user' }],
         limit: Infinity,
+        totalCost: 42,
       };
       const output = formatCostAsJson(breakdown);
       const parsed = JSON.parse(output);

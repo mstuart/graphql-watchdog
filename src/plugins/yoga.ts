@@ -1,9 +1,9 @@
-import type { WatchdogConfig, N1Detection, ResolverCall } from '../types/index.js';
+import { isObjectType } from 'graphql';
 import { analyzeForN1 } from '../detector/analyzer.js';
 import { ResponseCache } from '../cache/store.js';
 import { normalizeResponse } from '../cache/normalizer.js';
 import { getMutationTypes } from '../cache/invalidator.js';
-import { isObjectType } from 'graphql';
+import type { WatchdogConfig, N1Detection, ResolverCall } from '../types/index.js';
 import type { GraphQLSchema, DocumentNode } from 'graphql';
 
 export interface WatchdogYogaPluginOptions extends WatchdogConfig {
@@ -21,68 +21,73 @@ const instrumentedSchemas = new WeakSet<GraphQLSchema>();
  * Walk the schema's types and wrap every custom resolver so it records
  * calls to `context._watchdogCalls` (set per-request in onExecute).
  */
-function instrumentSchemaResolvers(schema: GraphQLSchema): void {
-  if (instrumentedSchemas.has(schema)) return;
+const instrumentSchemaResolvers = (schema: GraphQLSchema): void => {
+  if (instrumentedSchemas.has(schema)) {
+    return;
+  }
   instrumentedSchemas.add(schema);
 
   const typeMap = schema.getTypeMap();
-  for (const typeName of Object.keys(typeMap)) {
-    if (typeName.startsWith('__')) continue;
-    const type = typeMap[typeName];
-    if (!isObjectType(type)) continue;
-
+  for (const [typeName, type] of Object.entries(typeMap)) {
+    if (typeName.startsWith('__') || !isObjectType(type)) {
+      continue;
+    }
     const fields = type.getFields();
-    for (const fieldName of Object.keys(fields)) {
-      const field = fields[fieldName];
+    for (const [fieldName, field] of Object.entries(fields)) {
       const originalResolve = field.resolve;
-      if (!originalResolve) continue;
-
-      field.resolve = (source, args, context, info) => {
-        const calls: ResolverCall[] | undefined = context?._watchdogCalls;
-        if (!calls) {
-          return originalResolve(source, args, context, info);
-        }
-
-        const parentId = source
-          ? String((source as Record<string, unknown>).id ?? (source as Record<string, unknown>)._id ?? null)
-          : null;
-        const batchKey = `${typeName}.${fieldName}`;
-        const timestamp = Date.now();
-        const startTime = performance.now();
-
-        try {
-          const result = originalResolve(source, args, context, info);
-
-          // Handle async resolvers
-          if (result && typeof (result as { then?: unknown }).then === 'function') {
-            return (result as Promise<unknown>).then(
-              (value) => {
-                calls.push({ fieldName, typeName, parentId, timestamp, duration: performance.now() - startTime, batchKey });
-                return value;
-              },
-              (error) => {
-                calls.push({ fieldName, typeName, parentId, timestamp, duration: performance.now() - startTime, batchKey });
-                throw error;
-              },
-            );
+      if (originalResolve) {
+        // eslint-disable-next-line @typescript-eslint/max-params -- GraphQL resolver signatures have four positional parameters.
+        field.resolve = async (source, resolverArguments, context, info) => {
+          const calls: ResolverCall[] | undefined = context?._watchdogCalls;
+          if (!calls) {
+            return originalResolve(source, resolverArguments, context, info);
           }
 
-          calls.push({ fieldName, typeName, parentId, timestamp, duration: performance.now() - startTime, batchKey });
-          return result;
-        } catch (error) {
-          calls.push({ fieldName, typeName, parentId, timestamp, duration: performance.now() - startTime, batchKey });
-          throw error;
-        }
-      };
+          const parentId = source
+            ? String(
+                (source as Record<string, unknown>).id ??
+                  (source as Record<string, unknown>)._id ??
+                  null,
+              )
+            : null;
+          const batchKey = `${typeName}.${fieldName}`;
+          const timestamp = Date.now();
+          const startTime = performance.now();
+
+          try {
+            return await originalResolve(source, resolverArguments, context, info);
+          } finally {
+            calls.push({
+              batchKey,
+              duration: performance.now() - startTime,
+              fieldName,
+              parentId,
+              timestamp,
+              typeName,
+            });
+          }
+        };
+      }
     }
   }
-}
+};
 
-export function useWatchdog(config?: WatchdogYogaPluginOptions) {
+export const useWatchdog = (config?: WatchdogYogaPluginOptions) => {
   const cache = config?.enableCache ? new ResponseCache(config.cache) : null;
 
   return {
-    onExecute({ args }: { args: { schema: GraphQLSchema; document: DocumentNode; contextValue?: Record<string, unknown>; operationName?: string | null; variableValues?: Record<string, unknown> | null } }) {
+    getCache: (): ResponseCache | null => cache,
+    onExecute({
+      args,
+    }: {
+      args: {
+        schema: GraphQLSchema;
+        document: DocumentNode;
+        contextValue?: Record<string, unknown>;
+        operationName?: string | null;
+        variableValues?: Record<string, unknown> | null;
+      };
+    }) {
       // Instrument schema resolvers on first use
       if (config?.enableDetector !== false) {
         instrumentSchemaResolvers(args.schema);
@@ -95,9 +100,13 @@ export function useWatchdog(config?: WatchdogYogaPluginOptions) {
       const startTime = Date.now();
 
       return {
-        onExecuteDone({ result }: { result: { data?: Record<string, unknown> | null; errors?: unknown[] } }) {
+        onExecuteDone({
+          result,
+        }: {
+          result: { data?: Record<string, unknown> | null; errors?: unknown[] };
+        }) {
           const duration = Date.now() - startTime;
-          const calls = ((args.contextValue?._watchdogCalls ?? []) as ResolverCall[]);
+          const calls = (args.contextValue?._watchdogCalls ?? []) as ResolverCall[];
 
           // Analyze for N+1
           let n1Detections: N1Detection[] = [];
@@ -135,13 +144,9 @@ export function useWatchdog(config?: WatchdogYogaPluginOptions) {
             }
           }
 
-          return { n1Detections, duration };
+          return { duration, n1Detections };
         },
       };
     },
-
-    getCache(): ResponseCache | null {
-      return cache;
-    },
   };
-}
+};

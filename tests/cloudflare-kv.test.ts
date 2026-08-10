@@ -1,21 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CloudflareKVBackend, type KVNamespace } from '../src/cache/cloudflare-kv.js';
+import { CloudflareKVBackend } from '../src/cache/cloudflare-kv.js';
+import type { KVNamespace } from '../src/cache/cloudflare-kv.js';
 
-function createMockKV(): KVNamespace & { _store: Map<string, string> } {
+const createMockKV = (): KVNamespace & { _store: Map<string, string> } => {
   const store = new Map<string, string>();
 
   return {
     _store: store,
-    async get(key: string): Promise<string | null> {
-      return store.get(key) ?? null;
-    },
-    async put(key: string, value: string, _options?: { expirationTtl?: number }): Promise<void> {
-      store.set(key, value);
-    },
     async delete(key: string): Promise<void> {
       store.delete(key);
     },
-    async list(options?: { prefix?: string; cursor?: string }) {
+    get: async (key: string): Promise<string | null> => store.get(key) ?? null,
+    async list(options?: Parameters<KVNamespace['list']>[0]) {
       const prefix = options?.prefix ?? '';
       const keys: { name: string }[] = [];
       for (const key of store.keys()) {
@@ -25,8 +21,11 @@ function createMockKV(): KVNamespace & { _store: Map<string, string> } {
       }
       return { keys, list_complete: true };
     },
+    async put(key: string, value: string): Promise<void> {
+      store.set(key, value);
+    },
   };
-}
+};
 
 describe('CloudflareKVBackend', () => {
   let mockKV: ReturnType<typeof createMockKV>;
@@ -50,24 +49,18 @@ describe('CloudflareKVBackend', () => {
 
   it('should store with TTL', async () => {
     const putSpy = vi.spyOn(mockKV, 'put');
-    await backend.set('key1', 'value1', 120000); // 120s
+    // 120s
+    await backend.set('key1', 'value1', 120_000);
 
-    expect(putSpy).toHaveBeenCalledWith(
-      'gql-watchdog:key1',
-      'value1',
-      { expirationTtl: 120 },
-    );
+    expect(putSpy).toHaveBeenCalledWith('gql-watchdog:key1', 'value1', { expirationTtl: 120 });
   });
 
   it('should enforce minimum 60s TTL for KV', async () => {
     const putSpy = vi.spyOn(mockKV, 'put');
-    await backend.set('key1', 'value1', 5000); // 5s should become 60s
+    // 5s should become 60s
+    await backend.set('key1', 'value1', 5000);
 
-    expect(putSpy).toHaveBeenCalledWith(
-      'gql-watchdog:key1',
-      'value1',
-      { expirationTtl: 60 },
-    );
+    expect(putSpy).toHaveBeenCalledWith('gql-watchdog:key1', 'value1', { expirationTtl: 60 });
   });
 
   it('should delete a key', async () => {
@@ -118,8 +111,8 @@ describe('CloudflareKVBackend', () => {
 
   it('should use custom key prefix', async () => {
     const customBackend = new CloudflareKVBackend({
-      namespace: mockKV,
       keyPrefix: 'custom:',
+      namespace: mockKV,
     });
 
     await customBackend.set('test', 'value');
