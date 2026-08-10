@@ -5,12 +5,12 @@ import { createBenchmarkCommand } from '../src/cli/benchmark.js';
 describe('CLI Commands', () => {
   describe('analyze command', () => {
     it('should create analyze command with expected options', () => {
-      const cmd = createAnalyzeCommand();
+      const command = createAnalyzeCommand();
 
-      expect(cmd.name()).toBe('analyze');
-      expect(cmd.description()).toContain('Analyze');
+      expect(command.name()).toBe('analyze');
+      expect(command.description()).toContain('Analyze');
 
-      const options = cmd.options.map((o) => o.long);
+      const options = command.options.map((o) => o.long);
       expect(options).toContain('--schema');
       expect(options).toContain('--operations');
       expect(options).toContain('--max-cost');
@@ -20,12 +20,12 @@ describe('CLI Commands', () => {
 
   describe('benchmark command', () => {
     it('should create benchmark command with expected options', () => {
-      const cmd = createBenchmarkCommand();
+      const command = createBenchmarkCommand();
 
-      expect(cmd.name()).toBe('benchmark');
-      expect(cmd.description()).toContain('Benchmark');
+      expect(command.name()).toBe('benchmark');
+      expect(command.description()).toContain('Benchmark');
 
-      const options = cmd.options.map((o) => o.long);
+      const options = command.options.map((o) => o.long);
       expect(options).toContain('--endpoint');
       expect(options).toContain('--operations');
       expect(options).toContain('--baseline');

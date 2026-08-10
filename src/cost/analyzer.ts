@@ -1,14 +1,5 @@
-import {
-  type DocumentNode,
-  type GraphQLSchema,
-  type GraphQLOutputType,
-  visit,
-  Kind,
-  TypeInfo,
-  visitWithTypeInfo,
-  isListType,
-  isNonNullType,
-} from 'graphql';
+import { visit, Kind, TypeInfo, visitWithTypeInfo, isListType, isNonNullType } from 'graphql';
+import type { DocumentNode, GraphQLSchema, GraphQLOutputType } from 'graphql';
 import type { CostConfig } from '../types/index.js';
 
 export interface CostBreakdown {
@@ -18,18 +9,23 @@ export interface CostBreakdown {
   limit: number;
 }
 
-function isListLikeType(type: GraphQLOutputType): boolean {
-  if (isListType(type)) return true;
-  if (isNonNullType(type)) return isListLikeType(type.ofType);
+const isListLikeType = (type: GraphQLOutputType): boolean => {
+  if (isListType(type)) {
+    return true;
+  }
+  if (isNonNullType(type)) {
+    return isListLikeType(type.ofType);
+  }
   return false;
-}
+};
 
-export function analyzeCost(
+export const analyzeCost = (
   document: DocumentNode,
   schema: GraphQLSchema,
   config: CostConfig = {},
   variables?: Record<string, unknown>,
-): CostBreakdown {
+  // eslint-disable-next-line @typescript-eslint/max-params -- Cost analysis accepts the established public API arguments.
+): CostBreakdown => {
   const defaultFieldCost = config.defaultFieldCost ?? 1;
   const defaultListMultiplier = config.defaultListMultiplier ?? 10;
   const maxCost = config.maxCost ?? Infinity;
@@ -46,10 +42,11 @@ export function analyzeCost(
     document,
     visitWithTypeInfo(typeInfo, {
       Field: {
+        // eslint-disable-next-line sonarjs/cognitive-complexity -- GraphQL cost traversal keeps multiplier and path state together.
         enter(node) {
           const fieldName = node.name.value;
           const parentType = typeInfo.getParentType();
-          const fieldDef = typeInfo.getFieldDef();
+          const fieldDefinition = typeInfo.getFieldDef();
           const typeName = parentType?.name ?? '';
 
           pathStack.push(fieldName);
@@ -60,27 +57,27 @@ export function analyzeCost(
           const baseCost = costMap[costKey] ?? defaultFieldCost;
 
           // Get current multiplier from parent
-          const currentMultiplier = multiplierStack[multiplierStack.length - 1];
+          const currentMultiplier = multiplierStack.at(-1) ?? 1;
           const fieldCost = baseCost * currentMultiplier;
 
-          fieldCosts.push({ path, cost: fieldCost });
+          fieldCosts.push({ cost: fieldCost, path });
 
           // Determine multiplier for children
           let childMultiplier = currentMultiplier;
-          if (fieldDef) {
-            const returnType = fieldDef.type;
+          if (fieldDefinition) {
+            const returnType = fieldDefinition.type;
             if (isListLikeType(returnType)) {
               // Check for first/limit/last arguments in variables or literal args
               let listSize = defaultListMultiplier;
               if (node.arguments) {
-                for (const arg of node.arguments) {
-                  if (['first', 'limit', 'last'].includes(arg.name.value)) {
-                    if (arg.value.kind === Kind.INT) {
-                      listSize = parseInt(arg.value.value, 10);
-                    } else if (arg.value.kind === Kind.VARIABLE && variables) {
-                      const varName = arg.value.name.value;
-                      if (typeof variables[varName] === 'number') {
-                        listSize = variables[varName] as number;
+                for (const argument of node.arguments) {
+                  if (['first', 'limit', 'last'].includes(argument.name.value)) {
+                    if (argument.value.kind === Kind.INT) {
+                      listSize = Number(argument.value.value);
+                    } else if (variables && argument.value.kind === Kind.VARIABLE) {
+                      const variableName = argument.value.name.value;
+                      if (typeof variables[variableName] === 'number') {
+                        listSize = variables[variableName] as number;
                       }
                     }
                   }
@@ -103,9 +100,9 @@ export function analyzeCost(
   const totalCost = fieldCosts.reduce((sum, f) => sum + f.cost, 0);
 
   return {
-    totalCost,
-    fieldCosts,
     exceeds: totalCost > maxCost,
+    fieldCosts,
     limit: maxCost,
+    totalCost,
   };
-}
+};

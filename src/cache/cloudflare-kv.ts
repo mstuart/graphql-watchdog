@@ -2,10 +2,10 @@ import type { CacheBackend } from './backend.js';
 
 /** Type stub for Cloudflare Workers KV namespace binding (no dependency needed) */
 export interface KVNamespace {
-  get(key: string): Promise<string | null>;
-  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
-  delete(key: string): Promise<void>;
-  list(options?: { prefix?: string; cursor?: string }): Promise<{
+  get: (key: string) => Promise<string | null>;
+  put: (key: string, value: string, options?: { expirationTtl?: number }) => Promise<void>;
+  delete: (key: string) => Promise<void>;
+  list: (options?: { prefix?: string; cursor?: string }) => Promise<{
     keys: { name: string }[];
     list_complete: boolean;
     cursor?: string;
@@ -14,8 +14,13 @@ export interface KVNamespace {
 
 export interface CloudflareKVConfig {
   namespace: KVNamespace;
-  keyPrefix?: string; // default 'gql-watchdog:'
+  // default 'gql-watchdog:'
+  keyPrefix?: string;
 }
+
+const prefixedKey = (keyPrefix: string, key: string): string => `${keyPrefix}${key}`;
+const unprefixKey = (keyPrefix: string, key: string): string =>
+  key.startsWith(keyPrefix) ? key.slice(keyPrefix.length) : key;
 
 export class CloudflareKVBackend implements CacheBackend {
   private ns: KVNamespace;
@@ -26,16 +31,8 @@ export class CloudflareKVBackend implements CacheBackend {
     this.keyPrefix = config.keyPrefix ?? 'gql-watchdog:';
   }
 
-  private prefixedKey(key: string): string {
-    return `${this.keyPrefix}${key}`;
-  }
-
-  private unprefixKey(key: string): string {
-    return key.startsWith(this.keyPrefix) ? key.slice(this.keyPrefix.length) : key;
-  }
-
   async get(key: string): Promise<string | null> {
-    return this.ns.get(this.prefixedKey(key));
+    return this.ns.get(prefixedKey(this.keyPrefix, key));
   }
 
   async set(key: string, value: string, ttlMs?: number): Promise<void> {
@@ -45,38 +42,34 @@ export class CloudflareKVBackend implements CacheBackend {
       const ttlSec = Math.max(60, Math.ceil(ttlMs / 1000));
       options.expirationTtl = ttlSec;
     }
-    await this.ns.put(this.prefixedKey(key), value, options);
+    await this.ns.put(prefixedKey(this.keyPrefix, key), value, options);
   }
 
   async del(key: string): Promise<void> {
-    await this.ns.delete(this.prefixedKey(key));
+    await this.ns.delete(prefixedKey(this.keyPrefix, key));
   }
 
   async keys(pattern: string): Promise<string[]> {
     // KV list only supports prefix-based listing, not glob patterns
     // Extract a prefix from the pattern (everything before the first wildcard)
     const prefixEnd = pattern.indexOf('*');
-    const searchPrefix =
-      prefixEnd >= 0
-        ? this.prefixedKey(pattern.slice(0, prefixEnd))
-        : this.prefixedKey(pattern);
+    const patternPrefix = prefixEnd === -1 ? pattern : pattern.slice(0, prefixEnd);
+    const searchPrefix = prefixedKey(this.keyPrefix, patternPrefix);
 
     const result: string[] = [];
     let cursor: string | undefined;
 
     // Paginate through all matching keys
     do {
+      // eslint-disable-next-line no-await-in-loop -- Each KV page requires the prior page's cursor.
       const listResult = await this.ns.list({
-        prefix: searchPrefix,
         cursor,
+        prefix: searchPrefix,
       });
 
       for (const key of listResult.keys) {
-        const unprefixed = this.unprefixKey(key.name);
-        // If pattern has a wildcard, do a simple match
-        if (prefixEnd >= 0) {
-          result.push(unprefixed);
-        } else if (key.name === this.prefixedKey(pattern)) {
+        const unprefixed = unprefixKey(this.keyPrefix, key.name);
+        if (prefixEnd !== -1 || key.name === prefixedKey(this.keyPrefix, pattern)) {
           result.push(unprefixed);
         }
       }
@@ -88,24 +81,25 @@ export class CloudflareKVBackend implements CacheBackend {
   }
 
   async delMany(keys: string[]): Promise<number> {
-    let count = 0;
     for (const key of keys) {
-      await this.ns.delete(this.prefixedKey(key));
-      count++;
+      // eslint-disable-next-line no-await-in-loop -- Sequential deletes avoid overwhelming the KV provider.
+      await this.ns.delete(prefixedKey(this.keyPrefix, key));
     }
-    return count;
+    return keys.length;
   }
 
   async clear(): Promise<void> {
     let cursor: string | undefined;
 
     do {
+      // eslint-disable-next-line no-await-in-loop -- Each KV page requires the prior page's cursor.
       const listResult = await this.ns.list({
-        prefix: this.keyPrefix,
         cursor,
+        prefix: this.keyPrefix,
       });
 
       for (const key of listResult.keys) {
+        // eslint-disable-next-line no-await-in-loop -- Sequential deletes avoid overwhelming the KV provider.
         await this.ns.delete(key.name);
       }
 

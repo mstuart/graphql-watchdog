@@ -1,17 +1,23 @@
+import type { CacheBackend } from '../cache/backend.js';
+
 export interface ResolverCall {
   fieldName: string;
   typeName: string;
   parentId: string | null;
   timestamp: number;
   duration: number;
-  batchKey: string; // typeName.fieldName
+  // typeName.fieldName
+  batchKey: string;
 }
 
 export interface N1Detection {
-  field: string; // e.g., "Post.author"
-  parentField: string; // e.g., "Query.posts"
+  // e.g., "Post.author"
+  field: string;
+  // e.g., "Query.posts"
+  parentField: string;
   callCount: number;
-  suggestion: string; // DataLoader suggestion code
+  // DataLoader suggestion code
+  suggestion: string;
   severity: 'critical' | 'warning';
 }
 
@@ -38,25 +44,35 @@ export interface CacheStats {
 }
 
 export interface CostConfig {
-  defaultFieldCost?: number; // default 1
-  defaultListMultiplier?: number; // default 10
+  // default 1
+  defaultFieldCost?: number;
+  // default 10
+  defaultListMultiplier?: number;
   costMap?: Record<string, number>;
   maxCost?: number;
 }
 
 export interface WatchdogConfig {
-  enableDetector?: boolean; // default true
-  enableCost?: boolean; // default true
-  enableCache?: boolean; // default false
+  // default true
+  enableDetector?: boolean;
+  // default true
+  enableCost?: boolean;
+  // default false
+  enableCache?: boolean;
   cost?: CostConfig;
   cache?: CacheConfig;
-  dynamicCost?: boolean;        // enable dynamic cost tracking
-  dynamicCostBaseline?: number; // ms per cost unit (default 10)
+  // enable dynamic cost tracking
+  dynamicCost?: boolean;
+  // ms per cost unit (default 10)
+  dynamicCostBaseline?: number;
 }
 
 export interface CacheConfig {
-  maxSize?: number; // default 1000
-  ttl?: number; // ms, default 60000
-  invalidateOnMutation?: boolean; // default true
-  backend?: import('../cache/backend.js').CacheBackend;
+  // default 1000
+  maxSize?: number;
+  // ms, default 60000
+  ttl?: number;
+  // default true
+  invalidateOnMutation?: boolean;
+  backend?: CacheBackend;
 }

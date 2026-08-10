@@ -207,7 +207,7 @@ describe('Query Optimization Suggestions', () => {
       expect(dataloaderSuggestions.length).toBeGreaterThan(0);
       const authorSuggestion = dataloaderSuggestions.find((s) => s.field === 'Post.author');
       expect(authorSuggestion).toBeDefined();
-      expect(authorSuggestion!.message).toContain('DataLoader');
+      expect(authorSuggestion?.message).toContain('DataLoader');
     });
 
     it('should not suggest DataLoader for non-list parents', () => {
@@ -250,9 +250,9 @@ describe('Query Optimization Suggestions', () => {
       const suggestions = suggestOptimizations(breakdown, query, schema);
 
       if (suggestions.length >= 2) {
-        for (let i = 1; i < suggestions.length; i++) {
-          expect(suggestions[i - 1].estimatedSaving).toBeGreaterThanOrEqual(
-            suggestions[i].estimatedSaving,
+        for (let index = 1; index < suggestions.length; index += 1) {
+          expect(suggestions[index - 1].estimatedSaving).toBeGreaterThanOrEqual(
+            suggestions[index].estimatedSaving,
           );
         }
       }

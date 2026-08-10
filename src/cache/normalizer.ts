@@ -6,36 +6,48 @@ export interface NormalizedEntity {
   data: Record<string, unknown>;
 }
 
-export function normalizeResponse(
+export const generateCacheKey = (
+  operationName: string | null,
+  variables?: Record<string, unknown>,
+): string => {
+  const raw = JSON.stringify({ op: operationName, vars: variables ?? {} });
+  return createHash('sha256').update(raw).digest('hex').slice(0, 16);
+};
+
+export const normalizeResponse = (
   data: Record<string, unknown>,
   operationName: string | null,
   variables?: Record<string, unknown>,
-): { entities: NormalizedEntity[]; cacheKey: string } {
+): { entities: NormalizedEntity[]; cacheKey: string } => {
   const entities: NormalizedEntity[] = [];
 
-  function extractEntities(obj: unknown): unknown {
-    if (obj === null || obj === undefined) return obj;
-
-    if (Array.isArray(obj)) {
-      return obj.map((item) => extractEntities(item));
+  const extractEntities = (object: unknown): unknown => {
+    if (object === null || object === undefined) {
+      return object;
     }
 
-    if (typeof obj === 'object') {
-      const record = obj as Record<string, unknown>;
+    if (Array.isArray(object)) {
+      return object.map((item) => extractEntities(item));
+    }
+
+    if (typeof object === 'object') {
+      const record = object as Record<string, unknown>;
       const typename = record.__typename as string | undefined;
       const id = record.id ?? record._id;
 
       if (typename && id !== undefined) {
-        const data: Record<string, unknown> = {};
+        const entityData: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(record)) {
-          if (key === '__typename' || key === 'id' || key === '_id') continue;
-          data[key] = extractEntities(value);
+          if (['__typename', '_id', 'id'].includes(key)) {
+            continue;
+          }
+          entityData[key] = extractEntities(value);
         }
 
         entities.push({
           __typename: typename,
+          data: entityData,
           id: String(id),
-          data,
         });
 
         return { __ref: `${typename}:${id}` };
@@ -49,20 +61,12 @@ export function normalizeResponse(
       return result;
     }
 
-    return obj;
-  }
+    return object;
+  };
 
   extractEntities(data);
 
   const cacheKey = generateCacheKey(operationName, variables);
 
-  return { entities, cacheKey };
-}
-
-export function generateCacheKey(
-  operationName: string | null,
-  variables?: Record<string, unknown>,
-): string {
-  const raw = JSON.stringify({ op: operationName, vars: variables ?? {} });
-  return createHash('sha256').update(raw).digest('hex').slice(0, 16);
-}
+  return { cacheKey, entities };
+};

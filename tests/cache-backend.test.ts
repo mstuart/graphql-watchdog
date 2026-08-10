@@ -4,6 +4,10 @@ import { RedisCacheBackend } from '../src/cache/redis.js';
 import { ResponseCache } from '../src/cache/store.js';
 import type { NormalizedEntity } from '../src/cache/normalizer.js';
 
+const makeEntities = (typename: string, id: string): NormalizedEntity[] => [
+  { __typename: typename, data: {}, id },
+];
+
 describe('CacheBackend', () => {
   describe('MemoryCacheBackend', () => {
     let backend: MemoryCacheBackend;
@@ -39,7 +43,7 @@ describe('CacheBackend', () => {
 
     it('should not expire entries without TTL', async () => {
       await backend.set('key1', 'value1');
-      vi.advanceTimersByTime(999999);
+      vi.advanceTimersByTime(999_999);
       expect(await backend.get('key1')).toBe('value1');
     });
 
@@ -127,8 +131,8 @@ describe('CacheBackend', () => {
 
     it('should accept custom config', () => {
       const backend = new RedisCacheBackend({
-        url: 'redis://custom:6380',
         keyPrefix: 'myapp:',
+        url: 'redis://custom:6380',
       });
       expect(backend).toBeDefined();
     });
@@ -141,16 +145,12 @@ describe('CacheBackend', () => {
     beforeEach(() => {
       vi.useFakeTimers();
       backend = new MemoryCacheBackend();
-      cache = new ResponseCache({ maxSize: 5, ttl: 1000, backend });
+      cache = new ResponseCache({ backend, maxSize: 5, ttl: 1000 });
     });
 
     afterEach(() => {
       vi.useRealTimers();
     });
-
-    const makeEntities = (typename: string, id: string): NormalizedEntity[] => [
-      { __typename: typename, id, data: {} },
-    ];
 
     it('should store data via backend', async () => {
       const data = { user: { name: 'Alice' } };
@@ -159,7 +159,10 @@ describe('CacheBackend', () => {
       // Verify backend received the data
       const raw = await backend.get('key1');
       expect(raw).not.toBeNull();
-      const parsed = JSON.parse(raw!);
+      if (raw === null) {
+        throw new Error('Expected cached value');
+      }
+      const parsed = JSON.parse(raw);
       expect(parsed.data).toEqual(data);
     });
 
@@ -194,8 +197,10 @@ describe('CacheBackend', () => {
     it('should track stats', async () => {
       cache.set('key1', { data: 1 }, makeEntities('User', '1'));
 
-      await cache.getAsync('key1'); // hit
-      await cache.getAsync('missing'); // miss
+      // hit
+      await cache.getAsync('key1');
+      // miss
+      await cache.getAsync('missing');
 
       const stats = cache.getStats();
       expect(stats.hits).toBe(1);
