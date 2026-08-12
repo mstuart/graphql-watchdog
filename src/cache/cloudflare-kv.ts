@@ -1,6 +1,8 @@
 import type { CacheBackend } from './backend.js';
 
-/** Type stub for Cloudflare Workers KV namespace binding (no dependency needed) */
+/**
+Type stub for Cloudflare Workers KV namespace binding (no dependency needed)
+*/
 export interface KVNamespace {
   get: (key: string) => Promise<string | null>;
   put: (key: string, value: string, options?: { expirationTtl?: number }) => Promise<void>;
