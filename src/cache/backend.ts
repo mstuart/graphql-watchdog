@@ -2,9 +2,13 @@ export interface CacheBackend {
   get: (key: string) => Promise<string | null>;
   set: (key: string, value: string, ttlMs?: number) => Promise<void>;
   del: (key: string) => Promise<void>;
-  /** Get all keys matching a pattern */
+  /**
+  Get all keys matching a pattern
+  */
   keys: (pattern: string) => Promise<string[]>;
-  /** Delete multiple keys */
+  /**
+  Delete multiple keys
+  */
   delMany: (keys: string[]) => Promise<number>;
   clear: () => Promise<void>;
 }

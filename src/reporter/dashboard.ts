@@ -1,11 +1,12 @@
 import type { PerformanceReport, CacheStats } from '../types/index.js';
 
-const escapeHtml = (value: string): string =>
-  value
+const escapeHtml = (value: string): string => {
+  return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+};
 
 export const calculatePerformanceScore = (report: PerformanceReport): number => {
   let score = 100;
@@ -189,10 +190,12 @@ export const generateDashboard = (report: PerformanceReport): string => {
   // Cost breakdown
   const allFieldCosts =
     report.operations.length > 0
-      ? report.operations.map((op) => ({
-          cost: op.costEstimate,
-          path: op.operationName ?? '<anonymous>',
-        }))
+      ? report.operations.map((op) => {
+          return {
+            cost: op.costEstimate,
+            path: op.operationName ?? '<anonymous>',
+          };
+        })
       : [];
 
   // Slowest operations

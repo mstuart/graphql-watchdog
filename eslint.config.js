@@ -18,12 +18,20 @@ export default [
     },
   },
   {
+    files: ['src/index.ts', 'src/*/index.ts'],
+    rules: {
+      'unicorn/no-barrel-files': 'off',
+    },
+  },
+  {
     files: ['src/**/*.ts'],
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/no-unsafe-function-type': 'off',
+      'arrow-body-style': 'off',
+      'unicorn/consistent-arrow-return-style': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',
         {
@@ -31,6 +39,13 @@ export default [
           varsIgnorePattern: '^_',
         },
       ],
+    },
+  },
+  {
+    files: ['tests/**/*.ts'],
+    rules: {
+      'arrow-body-style': 'off',
+      'unicorn/consistent-arrow-return-style': 'off',
     },
   },
 ];
