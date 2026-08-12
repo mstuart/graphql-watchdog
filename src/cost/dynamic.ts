@@ -88,12 +88,16 @@ export class DynamicCostTracker {
     return { costMap };
   }
 
-  /** Export timing data for persistence */
+  /**
+  Export timing data for persistence
+  */
   export(): ResolverTimingData {
     return structuredClone(this.timingData);
   }
 
-  /** Import previously saved timing data */
+  /**
+  Import previously saved timing data
+  */
   import(data: ResolverTimingData): void {
     for (const [key, entry] of Object.entries(data)) {
       this.timingData[key] = { ...entry };
@@ -105,7 +109,9 @@ export class DynamicCostTracker {
     }
   }
 
-  /** Get stats summary */
+  /**
+  Get stats summary
+  */
   getStats(): {
     trackedFields: number;
     totalCalls: number;
