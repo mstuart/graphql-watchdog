@@ -18,6 +18,11 @@ updates:
       # Revisit once those ship v17-compatible releases.
       - dependency-name: 'graphql'
         update-types: ['version-update:semver-major']
+      # unicorn 75+ enables new recommended rules that currently fail across
+      # production and test code. Evaluate that major separately instead of
+      # blocking the grouped routine development-dependency updates.
+      - dependency-name: 'eslint-plugin-unicorn'
+        update-types: ['version-update:semver-major']
     commit-message:
       prefix: 'fix'
       prefix-development: 'chore'
