@@ -15,6 +15,12 @@ const fetchInvalidJson = async (): Promise<Response> =>
     status: 200,
   });
 
+const fetchGraphqlErrors = async (): Promise<Response> =>
+  new Response('{"errors":[{"message":"resolver failed"}]}', {
+    headers: { 'Content-Type': 'application/json' },
+    status: 200,
+  });
+
 describe('CLI Commands', () => {
   describe('analyze command', () => {
     it('should create analyze command with expected options', () => {
@@ -69,6 +75,18 @@ describe('CLI Commands', () => {
           source: 'query Health { health }',
         }),
       ).rejects.toThrow();
+    });
+
+    it('rejects GraphQL error payloads returned with a successful HTTP status', async () => {
+      await expect(
+        benchmarkOperation({
+          endpoint: 'https://example.test/graphql',
+          fetchFunction: fetchGraphqlErrors,
+          iterations: 1,
+          operationName: 'Health',
+          source: 'query Health { health }',
+        }),
+      ).rejects.toThrow('Health iteration 1 returned GraphQL errors');
     });
   });
 });

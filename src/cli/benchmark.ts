@@ -33,6 +33,13 @@ const percentile = (sorted: number[], p: number): number => {
   return sorted[Math.max(0, index)];
 };
 
+const hasGraphqlErrors = (payload: unknown): boolean => {
+  if (typeof payload !== 'object' || payload === null || !('errors' in payload)) {
+    return false;
+  }
+  return Array.isArray(payload.errors) && payload.errors.length > 0;
+};
+
 export const benchmarkOperation = async (
   options: BenchmarkOperationOptions,
 ): Promise<BenchmarkResult> => {
@@ -57,7 +64,10 @@ export const benchmarkOperation = async (
 
     // Consume the response so parsing and transport errors invalidate the sample.
     // eslint-disable-next-line no-await-in-loop -- Each measured response must complete before the next iteration.
-    await response.json();
+    const payload: unknown = await response.json();
+    if (hasGraphqlErrors(payload)) {
+      throw new Error(`${operationName} iteration ${index + 1} returned GraphQL errors`);
+    }
     // eslint-disable-next-line compat/compat -- This package targets Node.js 22.
     latencies.push(performance.now() - start);
   }
