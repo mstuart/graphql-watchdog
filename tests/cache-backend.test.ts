@@ -206,5 +206,36 @@ describe('CacheBackend', () => {
       expect(stats.hits).toBe(1);
       expect(stats.misses).toBe(1);
     });
+
+    it('should invalidate backend entries by type without leaving stale index entries', async () => {
+      cache.set('user:1', { name: 'Alice' }, makeEntities('User', '1'));
+      cache.set('user:2', { name: 'Bob' }, makeEntities('User', '2'));
+      cache.set('post:1', { title: 'Hello' }, makeEntities('Post', '1'));
+
+      expect(cache.invalidateByType('User')).toBe(2);
+      expect(await backend.get('user:1')).toBeNull();
+      expect(await backend.get('user:2')).toBeNull();
+      expect(await backend.get('post:1')).not.toBeNull();
+      expect(cache.invalidateByType('User')).toBe(0);
+    });
+
+    it('should invalidate a specific backend entity', async () => {
+      cache.set('user:1', { name: 'Alice' }, makeEntities('User', '1'));
+      cache.set('user:2', { name: 'Bob' }, makeEntities('User', '2'));
+
+      expect(cache.invalidateByEntity('User', '1')).toBe(1);
+      expect(await backend.get('user:1')).toBeNull();
+      expect(await backend.get('user:2')).not.toBeNull();
+      expect(cache.invalidateByEntity('User', '1')).toBe(0);
+    });
+
+    it('should replace backend invalidation metadata when a key is overwritten', async () => {
+      cache.set('shared', { name: 'Alice' }, makeEntities('User', '1'));
+      cache.set('shared', { title: 'Hello' }, makeEntities('Post', '1'));
+
+      expect(cache.invalidateByType('User')).toBe(0);
+      expect(cache.invalidateByType('Post')).toBe(1);
+      expect(await backend.get('shared')).toBeNull();
+    });
   });
 });

@@ -33,6 +33,23 @@ const updateTypeIndex = (
   }
 };
 
+const removeFromTypeIndex = (
+  typeIndex: Map<string, Set<string>>,
+  cacheKey: string,
+  entities: NormalizedEntity[],
+): void => {
+  for (const entity of entities) {
+    const typeSet = typeIndex.get(entity.__typename);
+    if (!typeSet) {
+      continue;
+    }
+    typeSet.delete(cacheKey);
+    if (typeSet.size === 0) {
+      typeIndex.delete(entity.__typename);
+    }
+  }
+};
+
 interface DeleteEntryOptions {
   cache: Map<string, CacheEntry>;
   cacheKey: string;
@@ -46,15 +63,7 @@ const deleteEntry = ({ cache, cacheKey, stats, typeIndex }: DeleteEntryOptions):
     return;
   }
 
-  for (const entity of entry.entities) {
-    const typeSet = typeIndex.get(entity.__typename);
-    if (typeSet) {
-      typeSet.delete(cacheKey);
-      if (typeSet.size === 0) {
-        typeIndex.delete(entity.__typename);
-      }
-    }
-  }
+  removeFromTypeIndex(typeIndex, cacheKey, entry.entities);
 
   cache.delete(cacheKey);
   updateEntryCount(stats, cache);
@@ -121,6 +130,7 @@ const runInBackground = async (operation: Promise<unknown>): Promise<void> => {
 
 export class ResponseCache {
   private cache = new Map<string, CacheEntry>();
+  private backendEntities = new Map<string, NormalizedEntity[]>();
   // typename -> Set<cacheKey>
   private typeIndex = new Map<string, Set<string>>();
   private maxSize: number;
@@ -144,10 +154,18 @@ export class ResponseCache {
         lastAccess: Date.now(),
       };
       void runInBackground(this.backend.set(cacheKey, JSON.stringify(entry), this.ttl));
-      // Still maintain type index in memory for invalidation
+      const previousEntities = this.backendEntities.get(cacheKey);
+      if (previousEntities) {
+        removeFromTypeIndex(this.typeIndex, cacheKey, previousEntities);
+      }
+      this.backendEntities.set(cacheKey, entities);
       updateTypeIndex(this.typeIndex, cacheKey, entities);
-      updateEntryCount(this.stats, this.cache);
       return;
+    }
+
+    const previousEntry = this.cache.get(cacheKey);
+    if (previousEntry) {
+      removeFromTypeIndex(this.typeIndex, cacheKey, previousEntry.entities);
     }
 
     // Evict LRU if over maxSize
@@ -244,6 +262,14 @@ export class ResponseCache {
     if (this.backend) {
       // Async deletion, fire-and-forget
       void runInBackground(this.backend.delMany(keysToDelete));
+      for (const key of keysToDelete) {
+        const entities = this.backendEntities.get(key);
+        if (entities) {
+          removeFromTypeIndex(this.typeIndex, key, entities);
+          this.backendEntities.delete(key);
+        }
+      }
+      return count;
     }
 
     for (const key of keysToDelete) {
@@ -268,9 +294,9 @@ export class ResponseCache {
     const keysToDelete: string[] = [];
 
     for (const key of keys) {
-      const entry = this.cache.get(key);
-      if (entry) {
-        const hasEntity = entry.entities.some(
+      const entities = this.backend ? this.backendEntities.get(key) : this.cache.get(key)?.entities;
+      if (entities) {
+        const hasEntity = entities.some(
           (entity) => entity.__typename === typename && entity.id === id,
         );
         if (hasEntity) {
@@ -282,6 +308,14 @@ export class ResponseCache {
 
     if (this.backend && keysToDelete.length > 0) {
       void runInBackground(this.backend.delMany(keysToDelete));
+      for (const key of keysToDelete) {
+        const entities = this.backendEntities.get(key);
+        if (entities) {
+          removeFromTypeIndex(this.typeIndex, key, entities);
+          this.backendEntities.delete(key);
+        }
+      }
+      return count;
     }
 
     for (const key of keysToDelete) {
@@ -305,6 +339,7 @@ export class ResponseCache {
       void runInBackground(this.backend.clear());
     }
     this.cache.clear();
+    this.backendEntities.clear();
     this.typeIndex.clear();
     this.stats = { entries: 0, hitRate: 0, hits: 0, misses: 0 };
   }
