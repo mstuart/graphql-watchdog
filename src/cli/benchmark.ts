@@ -18,9 +18,71 @@ export interface BenchmarkReport {
   results: BenchmarkResult[];
 }
 
+type FetchFunction = typeof fetch;
+
+interface BenchmarkOperationOptions {
+  endpoint: string;
+  fetchFunction?: FetchFunction;
+  iterations: number;
+  operationName: string;
+  source: string;
+}
+
 const percentile = (sorted: number[], p: number): number => {
   const index = Math.ceil((p / 100) * sorted.length) - 1;
   return sorted[Math.max(0, index)];
+};
+
+const hasGraphqlErrors = (payload: unknown): boolean => {
+  if (typeof payload !== 'object' || payload === null || !('errors' in payload)) {
+    return false;
+  }
+  return Array.isArray(payload.errors) && payload.errors.length > 0;
+};
+
+export const benchmarkOperation = async (
+  options: BenchmarkOperationOptions,
+): Promise<BenchmarkResult> => {
+  const { endpoint, fetchFunction = fetch, iterations, operationName, source } = options;
+  const latencies: number[] = [];
+
+  for (let index = 0; index < iterations; index += 1) {
+    // eslint-disable-next-line compat/compat -- This package targets Node.js 22.
+    const start = performance.now();
+    // eslint-disable-next-line no-await-in-loop -- Sequential requests are required for latency measurement.
+    const response = await fetchFunction(endpoint, {
+      body: JSON.stringify({ query: source }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `${operationName} iteration ${index + 1} returned HTTP ${response.status} ${response.statusText}`.trim(),
+      );
+    }
+
+    // Consume the response so parsing and transport errors invalidate the sample.
+    // eslint-disable-next-line no-await-in-loop -- Each measured response must complete before the next iteration.
+    const payload: unknown = await response.json();
+    if (hasGraphqlErrors(payload)) {
+      throw new Error(`${operationName} iteration ${index + 1} returned GraphQL errors`);
+    }
+    // eslint-disable-next-line compat/compat -- This package targets Node.js 22.
+    latencies.push(performance.now() - start);
+  }
+
+  // eslint-disable-next-line unicorn/no-array-sort -- The project targets the ES2022 TypeScript library.
+  const sorted = [...latencies].sort((a, b) => a - b);
+  return {
+    iterations,
+    latencies: sorted,
+    mean: sorted.reduce((a, b) => a + b, 0) / sorted.length,
+    operationName,
+    p50: percentile(sorted, 50),
+    p95: percentile(sorted, 95),
+    p99: percentile(sorted, 99),
+  };
 };
 
 export const createBenchmarkCommand = (): Command => {
@@ -34,7 +96,7 @@ export const createBenchmarkCommand = (): Command => {
       .option('--iterations <n>', 'Number of iterations per operation', Number.parseInt, 10)
       .option('--output <file>', 'Save results to JSON file')
       .option('--threshold <percent>', 'Regression threshold percentage', Number.parseInt, 20)
-      // eslint-disable-next-line sonarjs/cognitive-complexity -- The CLI action coordinates the benchmark lifecycle.
+      // Keep benchmark orchestration at the CLI boundary while measurement remains independently testable.
       .action(async (options) => {
         // eslint-disable-next-line unicorn/try-complexity -- The CLI boundary reports all command failures consistently.
         try {
@@ -56,38 +118,13 @@ export const createBenchmarkCommand = (): Command => {
 
             console.log(`Benchmarking: ${operationName} (${iterations} iterations)`);
 
-            const latencies: number[] = [];
-
-            for (let index = 0; index < iterations; index += 1) {
-              // eslint-disable-next-line compat/compat -- This package targets Node.js 22.
-              const start = performance.now();
-              try {
-                // eslint-disable-next-line compat/compat, no-await-in-loop -- Sequential requests are required for latency measurement.
-                const response = await fetch(options.endpoint, {
-                  body: JSON.stringify({ query: source }),
-                  headers: { 'Content-Type': 'application/json' },
-                  method: 'POST',
-                });
-                // eslint-disable-next-line no-await-in-loop -- Each measured response must complete before the next iteration.
-                await response.json();
-              } catch (error) {
-                console.error(`  Error on iteration ${index + 1}:`, (error as Error).message);
-              }
-              // eslint-disable-next-line compat/compat -- This package targets Node.js 22.
-              latencies.push(performance.now() - start);
-            }
-
-            // eslint-disable-next-line unicorn/no-array-sort -- The project targets the ES2022 TypeScript library.
-            const sorted = [...latencies].sort((a, b) => a - b);
-            const result: BenchmarkResult = {
+            // eslint-disable-next-line no-await-in-loop -- Operations are benchmarked sequentially for stable measurements.
+            const result = await benchmarkOperation({
+              endpoint: options.endpoint,
               iterations,
-              latencies: sorted,
-              mean: sorted.reduce((a, b) => a + b, 0) / sorted.length,
               operationName,
-              p50: percentile(sorted, 50),
-              p95: percentile(sorted, 95),
-              p99: percentile(sorted, 99),
-            };
+              source,
+            });
 
             results.push(result);
 

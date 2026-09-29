@@ -1,6 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import { createAnalyzeCommand } from '../src/cli/analyze.js';
-import { createBenchmarkCommand } from '../src/cli/benchmark.js';
+import { benchmarkOperation, createBenchmarkCommand } from '../src/cli/benchmark.js';
+
+const fetchServiceUnavailable = async (): Promise<Response> =>
+  new Response('{"errors":[{"message":"unavailable"}]}', {
+    headers: { 'Content-Type': 'application/json' },
+    status: 503,
+    statusText: 'Service Unavailable',
+  });
+
+const fetchInvalidJson = async (): Promise<Response> =>
+  new Response('not json', {
+    headers: { 'Content-Type': 'application/json' },
+    status: 200,
+  });
+
+const fetchGraphqlErrors = async (): Promise<Response> =>
+  new Response('{"errors":[{"message":"resolver failed"}]}', {
+    headers: { 'Content-Type': 'application/json' },
+    status: 200,
+  });
 
 describe('CLI Commands', () => {
   describe('analyze command', () => {
@@ -32,6 +51,42 @@ describe('CLI Commands', () => {
       expect(options).toContain('--iterations');
       expect(options).toContain('--output');
       expect(options).toContain('--threshold');
+    });
+
+    it('rejects HTTP error responses instead of recording them as latency samples', async () => {
+      await expect(
+        benchmarkOperation({
+          endpoint: 'https://example.test/graphql',
+          fetchFunction: fetchServiceUnavailable,
+          iterations: 1,
+          operationName: 'Health',
+          source: 'query Health { health }',
+        }),
+      ).rejects.toThrow('Health iteration 1 returned HTTP 503 Service Unavailable');
+    });
+
+    it('rejects invalid JSON responses instead of recording them as latency samples', async () => {
+      await expect(
+        benchmarkOperation({
+          endpoint: 'https://example.test/graphql',
+          fetchFunction: fetchInvalidJson,
+          iterations: 1,
+          operationName: 'Health',
+          source: 'query Health { health }',
+        }),
+      ).rejects.toThrow();
+    });
+
+    it('rejects GraphQL error payloads returned with a successful HTTP status', async () => {
+      await expect(
+        benchmarkOperation({
+          endpoint: 'https://example.test/graphql',
+          fetchFunction: fetchGraphqlErrors,
+          iterations: 1,
+          operationName: 'Health',
+          source: 'query Health { health }',
+        }),
+      ).rejects.toThrow('Health iteration 1 returned GraphQL errors');
     });
   });
 });
