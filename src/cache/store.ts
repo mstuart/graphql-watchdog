@@ -85,7 +85,7 @@ const evictLRU = (
     oldestKey = key;
   }
 
-  if (oldestKey) {
+  if (oldestKey !== null) {
     deleteEntry({ cache, cacheKey: oldestKey, stats, typeIndex });
   }
 };
@@ -106,7 +106,7 @@ const readBackendEntry = async ({
   ttl,
 }: ReadBackendEntryOptions): Promise<unknown | null> => {
   const entry = JSON.parse(raw) as CacheEntry;
-  if (Date.now() > entry.expiry) {
+  if (Date.now() >= entry.expiry) {
     await backend.del(cacheKey);
     stats.misses += 1;
     updateHitRate(stats);
@@ -204,7 +204,7 @@ export class ResponseCache {
     }
 
     // Check expiry
-    if (Date.now() > entry.expiry) {
+    if (Date.now() >= entry.expiry) {
       deleteEntry({
         cache: this.cache,
         cacheKey,
