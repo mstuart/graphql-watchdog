@@ -1,8 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { buildSchema, parse } from 'graphql';
+import { buildSchema, parse, validate } from 'graphql';
 import { MemoryCacheBackend } from '../src/cache/backend.js';
 import { ResponseCache } from '../src/cache/store.js';
 import { analyzeCost } from '../src/cost/analyzer.js';
+import { costLimitRule } from '../src/cost/rules.js';
 
 afterEach(() => vi.useRealTimers());
 
@@ -48,4 +49,22 @@ it('rejects cyclic fragments instead of recursing without a bound', () => {
   const schema = buildSchema('type Query { users: [User] } type User { friends: [User] }');
   const document = parse('{ users { ...A } } fragment A on User { friends { ...A } }');
   expect(() => analyzeCost(document, schema)).toThrow('cyclic fragment');
+});
+
+it('deduplicates repeated acyclic spreads within each selection context', () => {
+  const schema = buildSchema('type Query { value: String }');
+  const fragments = Array.from(
+    { length: 12 },
+    (_, index) => `fragment F${index} on Query { ...F${index + 1} ...F${index + 1} }`,
+  ).join('\n');
+  const document = parse(`{ ...F0 } ${fragments} fragment F12 on Query { value }`);
+  expect(analyzeCost(document, schema).fieldCosts).toEqual([{ cost: 1, path: 'value' }]);
+});
+
+it('reports cyclic-fragment failures as GraphQL validation errors', () => {
+  const schema = buildSchema('type Query { value: String }');
+  const document = parse('{ ...A } fragment A on Query { ...A }');
+  const errors = validate(schema, document, [costLimitRule(schema, { maxCost: 10 })]);
+  expect(errors).toHaveLength(1);
+  expect(errors[0].message).toContain('cyclic fragment');
 });

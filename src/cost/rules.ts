@@ -11,7 +11,18 @@ export const costLimitRule = (
     return {
       Document: {
         leave(node: DocumentNode) {
-          const breakdown = analyzeCost(node, schema, config);
+          let breakdown;
+          try {
+            breakdown = analyzeCost(node, schema, config);
+          } catch (error) {
+            if (!(error instanceof GraphQLError)) {
+              throw error;
+            }
+            (context as unknown as { reportError: (error: GraphQLError) => void }).reportError(
+              error,
+            );
+            return;
+          }
           if (breakdown.exceeds) {
             (context as unknown as { reportError: (error: GraphQLError) => void }).reportError(
               new GraphQLError(

@@ -1,4 +1,12 @@
-import { visit, Kind, TypeInfo, visitWithTypeInfo, isListType, isNonNullType } from 'graphql';
+import {
+  visit,
+  Kind,
+  TypeInfo,
+  visitWithTypeInfo,
+  isListType,
+  isNonNullType,
+  GraphQLError,
+} from 'graphql';
 import type {
   ASTVisitor,
   DocumentNode,
@@ -45,6 +53,7 @@ export const analyzeCost = (
   const pathStack: string[] = [];
   const fragments = new Map<string, FragmentDefinitionNode>();
   const activeFragments = new Set<string>();
+  const fragmentContexts: Set<string>[] = [new Set()];
   for (const definition of document.definitions) {
     if (definition.kind === Kind.FRAGMENT_DEFINITION) {
       fragments.set(definition.name.value, definition);
@@ -99,10 +108,12 @@ export const analyzeCost = (
         }
 
         multiplierStack.push(childMultiplier);
+        fragmentContexts.push(new Set());
       },
       leave() {
         pathStack.pop();
         multiplierStack.pop();
+        fragmentContexts.pop();
       },
     },
     // eslint-disable-next-line sonarjs/function-name -- GraphQL visitor keys use AST node names.
@@ -115,8 +126,13 @@ export const analyzeCost = (
         return;
       }
       if (activeFragments.has(name)) {
-        throw new Error(`Cannot analyze cyclic fragment "${name}"`);
+        throw new GraphQLError(`Cannot analyze cyclic fragment "${name}"`);
       }
+      const seen = fragmentContexts.at(-1);
+      if (seen?.has(name)) {
+        return;
+      }
+      seen?.add(name);
       activeFragments.add(name);
       visit(
         {
@@ -127,6 +143,10 @@ export const analyzeCost = (
         visitWithTypeInfo(typeInfo, visitor),
       );
       activeFragments.delete(name);
+    },
+    // eslint-disable-next-line sonarjs/function-name -- GraphQL visitor keys use AST node names.
+    OperationDefinition() {
+      fragmentContexts[0].clear();
     },
   };
   visit(document, visitWithTypeInfo(typeInfo, visitor));
