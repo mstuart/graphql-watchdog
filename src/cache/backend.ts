@@ -27,7 +27,7 @@ export class MemoryCacheBackend implements CacheBackend {
       return null;
     }
 
-    if (entry.expiry > 0 && Date.now() > entry.expiry) {
+    if (entry.expiry > 0 && Date.now() >= entry.expiry) {
       this.store.delete(key);
       return null;
     }
@@ -54,7 +54,7 @@ export class MemoryCacheBackend implements CacheBackend {
 
       // Also check expiry
       const entry = this.store.get(key);
-      if (entry && (entry.expiry === 0 || Date.now() <= entry.expiry)) {
+      if (entry && (entry.expiry === 0 || Date.now() < entry.expiry)) {
         result.push(key);
       }
     }
